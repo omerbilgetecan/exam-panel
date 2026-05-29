@@ -77,11 +77,11 @@ function App() {
       const [nextDashboard, nextCourses, nextExams, nextCapacities, nextSupervisors, nextLogs] =
         await Promise.all([
           api.getDashboard(),
-          api.getCourses().catch(() => []),
-          api.getExams().catch(() => []),
-          api.getCapacities().catch(() => []),
-          api.getSupervisors().catch(() => []),
-          api.getLogs().catch(() => []),
+          api.getCourses(),
+          api.getExams(),
+          api.getCapacities(),
+          api.getSupervisors(),
+          api.getLogs(),
         ])
       setDashboard(nextDashboard ?? emptyDashboard)
       setCourses(nextCourses)
