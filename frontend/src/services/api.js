@@ -5,7 +5,14 @@ const wait = (duration = 220) =>
 
 const clone = (value) => JSON.parse(JSON.stringify(value))
 
+const readDemoMode = () => window.localStorage.getItem('exam-demo-mode') !== 'false'
+
 const initialData = {
+  departments: [
+    { id: 1, name: 'Bilgisayar Müh.' },
+    { id: 2, name: 'Matematik' },
+    { id: 3, name: 'Yazılım Müh.' }
+  ],
   courses: [
     { id: 1, code: 'BLM301', name: 'Veri Tabanı Yönetimi', department: 'Bilgisayar Müh.', semester: 'Bahar', studentCount: 42 },
     { id: 2, code: 'BLM205', name: 'Web Programlama', department: 'Bilgisayar Müh.', semester: 'Bahar', studentCount: 34 },
@@ -40,8 +47,6 @@ const initialData = {
 
 let demoData = clone(initialData)
 
-const readDemoMode = () => window.localStorage.getItem('exam-demo-mode') !== 'false'
-
 const logEvent = (action, detail, level = 'Başarılı') => {
   const now = new Intl.DateTimeFormat('tr-TR', {
     dateStyle: 'short',
@@ -51,18 +56,25 @@ const logEvent = (action, detail, level = 'Başarılı') => {
   demoData.logs.unshift({ id: Date.now(), time: now, action, detail, level })
 }
 
-async function request(path, options) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  })
+// Güvenli hale getirilmiş ve fallback (yedek veri) destekleyen request fonksiyonu
+async function request(path, options, fallbackValue = null) {
+  try {
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      headers: { 'Content-Type': 'application/json' },
+      ...options,
+    })
 
-  if (!response.ok) {
-    throw new Error(`API isteği başarısız: ${response.status}`)
+    if (!response.ok) {
+      console.warn(`API Hatası (${response.status}): ${path} yüklenemedi. Varsayılan veri dönülüyor.`)
+      return fallbackValue
+    }
+
+    if (response.status === 204) return null
+    return response.json()
+  } catch (error) {
+    console.error(`Sunucu bağlantı hatası: ${path} adresine erişilemedi.`, error)
+    return fallbackValue
   }
-
-  if (response.status === 204) return null
-  return response.json()
 }
 
 export const api = {
@@ -78,8 +90,39 @@ export const api = {
     window.localStorage.setItem('exam-demo-mode', String(enabled))
   },
 
+  async getDepartments() {
+    if (!readDemoMode()) return request('/departments', {}, [])
+    await wait()
+    return clone(demoData.departments || [])
+  },
+
+  async createDepartment(department) {
+    if (!readDemoMode()) {
+      return request('/departments', {
+        method: 'POST',
+        body: JSON.stringify(department),
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+    }
+    
+    await wait()
+    const newDepartment = { ...department, id: Date.now() }
+    if (!demoData.departments) demoData.departments = []
+    demoData.departments.unshift(newDepartment)
+    logEvent('Bölüm eklendi', newDepartment.name)
+    return clone(newDepartment)
+  },
+
   async getDashboard() {
-    if (!readDemoMode()) return request('/dashboard')
+    const emptyDashboard = {
+      courseCount: 0,
+      personnelCount: 0,
+      examCount: 0,
+    }
+
+    if (!readDemoMode()) return request('/dashboard', {}, emptyDashboard)
     await wait()
     const assigned = demoData.exams.filter((exam) => exam.supervisor !== 'Atama Bekliyor').length
     const usedSeats = demoData.capacities.reduce((sum, room) => sum + room.assigned, 0)
@@ -88,53 +131,85 @@ export const api = {
       courseCount: demoData.courses.length,
       personnelCount: demoData.supervisors.length,
       examCount: demoData.exams.length,
-      assignedCount: assigned,
-      roomUsage: totalSeats ? Math.round((usedSeats / totalSeats) * 100) : 0,
-      pendingCount: demoData.exams.length - assigned,
     }
   },
 
   async getCourses() {
-    if (!readDemoMode()) return request('/courses')
-    await wait()
-    return clone(demoData.courses)
-  },
+      if (!readDemoMode()) {
+        // Backend'den DersRequestDTO listesini çekiyoruz
+        const data = await request('/courses', {}, []);
+
+        // Backend'den gelen veriyi frontend bileşenlerinin beklediği formata map'liyoruz
+        return data.map(course => ({
+          id: course.id,
+          code: course.code,
+          name: course.name,
+          studentCount: course.studentCount,
+          semester: course.semester,
+          departmentId: course.departmentId, // Arka planda saklanan ID
+          department: course.department       // Ekranda görünecek olan bölüm ismi (Yazılım Müh. vb.)
+        }));
+      }
+
+      await wait();
+      return clone(demoData.courses);
+    },
 
   async getExams() {
-    if (!readDemoMode()) return request('/exams')
+    if (!readDemoMode()) return request('/exams', {}, [])
     await wait()
     return clone(demoData.exams)
   },
 
   async getCapacities() {
-    if (!readDemoMode()) return request('/capacities')
+    if (!readDemoMode()) return request('/capacities', {}, [])
     await wait()
     return clone(demoData.capacities)
   },
 
   async getSupervisors() {
-    if (!readDemoMode()) return request('/supervisors')
+    if (!readDemoMode()) return request('/supervisors', {}, [])
     await wait()
     return clone(demoData.supervisors)
   },
 
   async getLogs() {
-    if (!readDemoMode()) return request('/logs')
+    if (!readDemoMode()) return request('/logs', {}, [])
     await wait(120)
     return clone(demoData.logs)
   },
 
   async createCourse(course) {
-    if (!readDemoMode()) return request('/courses', { method: 'POST', body: JSON.stringify(course) })
-    await wait()
-    const newCourse = { ...course, id: Date.now(), studentCount: Number(course.studentCount) }
-    demoData.courses.unshift(newCourse)
-    logEvent('Ders eklendi', `${newCourse.code} - ${newCourse.name}`)
-    return clone(newCourse)
+    if (!readDemoMode()) {
+      // Backend DTO'sunun tam olarak beklediği JSON şablonunu oluşturuyoruz
+      const backendPayload = {
+        code: course.code,                             // DersKodu
+        name: course.name,                             // DersAdi
+        studentCount: Number(course.studentCount),     // OgrenciSayisi (Sayıya dönüştürdük)
+        semester: Number(course.semester),             // Yariyil (Sayıya dönüştürdük)
+        departmentId: Number(course.departmentId)      // BolumID (Sayıya dönüştürdük)
+      };
+
+      // İsteği gönderirken Content-Type başlığının doğru gittiğinden emin oluyoruz
+      return request('/courses', {
+        method: 'POST',
+        body: JSON.stringify(backendPayload),
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+    }
+
+    // Demo modu kodlarınız aynen kalıyor
+    await wait();
+    const newCourse = { ...course, id: Date.now(), studentCount: Number(course.studentCount) };
+    demoData.courses.unshift(newCourse);
+    logEvent('Ders eklendi', `${newCourse.code} - ${newCourse.name}`);
+    return clone(newCourse);
   },
 
   async createSupervisor(person) {
-    if (!readDemoMode()) return request('/supervisors', { method: 'POST', body: JSON.stringify(person) })
+    if (!readDemoMode()) return request('/supervisors', { method: 'POST', body: JSON.stringify(person) }, {})
     await wait()
     const name = person.name.startsWith(person.title) ? person.name : `${person.title} ${person.name}`
     const newPerson = { ...person, id: Date.now(), name, examCount: 0 }
@@ -144,7 +219,7 @@ export const api = {
   },
 
   async createExam(exam) {
-    if (!readDemoMode()) return request('/exams', { method: 'POST', body: JSON.stringify(exam) })
+    if (!readDemoMode()) return request('/exams', { method: 'POST', body: JSON.stringify(exam) }, {})
     await wait()
     const course = demoData.courses.find((entry) => entry.id === Number(exam.courseId))
     if (!course) throw new Error('Önce geçerli bir ders seçmelisin.')
@@ -170,7 +245,7 @@ export const api = {
       return request('/assignments', {
         method: 'POST',
         body: JSON.stringify({ examId, supervisorId }),
-      })
+      }, {})
     }
 
     await wait()
@@ -185,7 +260,7 @@ export const api = {
   },
 
   async runBackup() {
-    if (!readDemoMode()) return request('/backup', { method: 'POST' })
+    if (!readDemoMode()) return request('/backup', { method: 'POST' }, { message: 'Yedekleme başarısız.' })
     await wait(520)
     logEvent('Yedekleme tamamlandı', 'SQL Server backup procedure çalıştırıldı')
     return { message: 'Veritabanı yedeği başarıyla oluşturuldu.' }

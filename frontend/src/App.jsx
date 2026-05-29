@@ -16,6 +16,7 @@ const emptyDashboard = { examCount: 0, assignedCount: 0, roomUsage: 0, pendingCo
 const initialExamForm = { courseId: '', date: '2026-06-05', time: '09:30', classroom: '', studentCount: 30 }
 const initialCourseForm = { code: '', name: '', department: '', semester: 'Bahar', studentCount: 30 }
 const initialPersonForm = { name: '', department: '', title: 'Arş. Gör.', availability: 'Uygun' }
+const initialDepartmentForm = { name: '' }
 
 function StatusBadge({ value }) {
   const variant =
@@ -56,6 +57,7 @@ function App() {
   const [capacities, setCapacities] = useState([])
   const [supervisors, setSupervisors] = useState([])
   const [logs, setLogs] = useState([])
+  const [departments, setDepartments] = useState([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [demoMode, setDemoMode] = useState(api.isDemoMode())
@@ -64,6 +66,7 @@ function App() {
   const [examForm, setExamForm] = useState(initialExamForm)
   const [courseForm, setCourseForm] = useState(initialCourseForm)
   const [personForm, setPersonForm] = useState(initialPersonForm)
+  const [departmentForm, setDepartmentForm] = useState(initialDepartmentForm)
   const [assignment, setAssignment] = useState({ examId: '', supervisorId: '' })
 
   const pendingExams = useMemo(
@@ -74,14 +77,15 @@ function App() {
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      const [nextDashboard, nextCourses, nextExams, nextCapacities, nextSupervisors, nextLogs] =
+      const [nextDashboard, nextCourses, nextExams, nextCapacities, nextSupervisors, nextLogs, nextDepartments] =
         await Promise.all([
           api.getDashboard(),
-          api.getCourses().catch(() => []),
-          api.getExams().catch(() => []),
-          api.getCapacities().catch(() => []),
-          api.getSupervisors().catch(() => []),
-          api.getLogs().catch(() => []),
+          api.getCourses(),
+          api.getExams(),
+          api.getCapacities(),
+          api.getSupervisors(),
+          api.getLogs(),
+          api.getDepartments(),
         ])
       setDashboard(nextDashboard ?? emptyDashboard)
       setCourses(nextCourses)
@@ -89,6 +93,7 @@ function App() {
       setCapacities(nextCapacities)
       setSupervisors(nextSupervisors)
       setLogs(nextLogs)
+      setDepartments(nextDepartments)
     } catch {
       setToast('API bağlantısı kurulamadı. Demo modu ile devam edebilirsin.')
       api.setDemoMode(true)
@@ -155,6 +160,22 @@ function App() {
       setToast('Personel kaydı sisteme eklendi.')
       await loadData()
       setPage('personnel')
+    } catch (error) {
+      setToast(error.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function submitDepartment(event) {
+    event.preventDefault()
+    setBusy(true)
+    try {
+      await api.createDepartment(departmentForm)
+      setModal(null)
+      setDepartmentForm(initialDepartmentForm)
+      setToast('Bölüm kaydı sisteme eklendi.')
+      await loadData()
     } catch (error) {
       setToast(error.message)
     } finally {
@@ -250,6 +271,9 @@ function App() {
             <button type="button" className="secondary-button" disabled={busy} onClick={runBackup}>
               Backup Al
             </button>
+            <button type="button" className="secondary-button" onClick={() => setModal('department')}>
+              + Bölüm
+            </button>
             <button type="button" className="secondary-button" onClick={() => setModal('course')}>
               + Ders
             </button>
@@ -279,13 +303,53 @@ function App() {
         )}
       </main>
 
+      {modal === 'department' && (
+        <Modal title="Bölüm Kaydı Ekle" onClose={() => setModal(null)}>
+          <form className="form-grid" onSubmit={submitDepartment}>
+            <label>Bölüm Adı<input required value={departmentForm.name} onChange={(event) => setDepartmentForm({ ...departmentForm, name: event.target.value })} placeholder="Örn: Bilgisayar Müh." /></label>
+            <div className="form-actions"><button type="button" className="secondary-button" onClick={() => setModal(null)}>Vazgeç</button><button type="submit" className="primary-button" disabled={busy}>Kaydet</button></div>
+          </form>
+        </Modal>
+      )}
+
       {modal === 'course' && (
         <Modal title="Ders Kaydı Ekle" onClose={() => setModal(null)}>
           <form className="form-grid" onSubmit={submitCourse}>
             <label>Ders Kodu<input required value={courseForm.code} onChange={(event) => setCourseForm({ ...courseForm, code: event.target.value.toUpperCase() })} placeholder="BLM401" /></label>
             <label>Ders Adı<input required value={courseForm.name} onChange={(event) => setCourseForm({ ...courseForm, name: event.target.value })} placeholder="Yapay Zeka" /></label>
-            <label>Bölüm<input required value={courseForm.department} onChange={(event) => setCourseForm({ ...courseForm, department: event.target.value })} placeholder="Bilgisayar Müh." /></label>
-            <label>Dönem<select value={courseForm.semester} onChange={(event) => setCourseForm({ ...courseForm, semester: event.target.value })}><option>Güz</option><option>Bahar</option><option>Yaz</option></select></label>
+           <label>
+             Bölüm
+             <select
+               required
+               // State içinde artık department (string) değil, departmentId (number) tutuyoruz
+               value={courseForm.departmentId || ""}
+               onChange={(event) => setCourseForm({ ...courseForm, departmentId: event.target.value })}
+             >
+               <option value="">Bölüm Seçin</option>
+               {departments.map(d => (
+                 // En kritik yer: value kısmına d.name yerine d.id veriyoruz!
+                 <option key={d.id} value={d.id}>
+                   {d.name}
+                 </option>
+               ))}
+             </select>
+           </label>
+            <label>
+              Dönem (Yarıyıl)
+              <select
+                required
+                value={courseForm.semester || ""}
+                onChange={(event) => setCourseForm({ ...courseForm, semester: event.target.value })}
+              >
+                <option value="">Dönem Seçin</option>
+                {/* 1'den 8'e kadar döngü oluşturup seçenekleri basıyoruz */}
+                {[1, 2, 3, 4, 5, 6, 7, 8].map((num) => (
+                  <option key={num} value={num}>
+                    {num}. Yarıyıl
+                  </option>
+                ))}
+              </select>
+            </label>
             <label>Öğrenci Sayısı<input type="number" min="1" required value={courseForm.studentCount} onChange={(event) => setCourseForm({ ...courseForm, studentCount: event.target.value })} /></label>
             <div className="form-actions"><button type="button" className="secondary-button" onClick={() => setModal(null)}>Vazgeç</button><button type="submit" className="primary-button" disabled={busy}>Kaydet</button></div>
           </form>
@@ -297,7 +361,7 @@ function App() {
           <form className="form-grid" onSubmit={submitPerson}>
             <label>Ad Soyad<input required value={personForm.name} onChange={(event) => setPersonForm({ ...personForm, name: event.target.value })} placeholder="Dr. Ayşe Demir" /></label>
             <label>Unvan<select value={personForm.title} onChange={(event) => setPersonForm({ ...personForm, title: event.target.value })}><option>Prof. Dr.</option><option>Doç. Dr.</option><option>Dr.</option><option>Arş. Gör.</option><option>Öğr. Gör.</option></select></label>
-            <label>Bölüm<input required value={personForm.department} onChange={(event) => setPersonForm({ ...personForm, department: event.target.value })} placeholder="Matematik" /></label>
+            <label>Bölüm<select required value={personForm.department} onChange={(event) => setPersonForm({ ...personForm, department: event.target.value })}><option value="">Bölüm Seçin</option>{departments.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}</select></label>
             <label>Durum<select value={personForm.availability} onChange={(event) => setPersonForm({ ...personForm, availability: event.target.value })}><option>Uygun</option><option>Yoğun</option><option>İzinli</option></select></label>
             <div className="form-actions"><button type="button" className="secondary-button" onClick={() => setModal(null)}>Vazgeç</button><button type="submit" className="primary-button" disabled={busy}>Kaydet</button></div>
           </form>
@@ -346,7 +410,7 @@ function Dashboard({ dashboard = emptyDashboard, exams }) {
     { label: 'Toplam Ders', value: dashboard.courseCount, note: 'Sisteme kayıtlı' },
     { label: 'Toplam Personel', value: dashboard.personnelCount, note: 'Gözetmen havuzu' },
     { label: 'Toplam Sınav', value: dashboard.examCount, note: 'Bu dönem planlanan' },
-    { label: 'Bekleyen Atama', value: dashboard.pendingCount, note: 'İşlem gerekli', warning: true },
+
   ]
 
   return (
