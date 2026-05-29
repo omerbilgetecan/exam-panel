@@ -8,110 +8,117 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api")
-@CrossOrigin(origins = "http://localhost:5173")
+@CrossOrigin(origins = {"http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174"})
 public class ExamActivityController {
     private final ExamActivityServiceImpl examActivityService;
+
     public ExamActivityController(ExamActivityServiceImpl examActivityService) {
         this.examActivityService = examActivityService;
     }
 
-
-
     @PostMapping("/departments")
     public ResponseEntity<Integer> createBolum(@RequestBody BolumRequestDTO req) {
-
-        Integer id = examActivityService.addNewBolum(req.getName());
-
-        return new ResponseEntity<>(id, HttpStatus.CREATED);
+        return new ResponseEntity<>(examActivityService.addNewBolum(req.getName()), HttpStatus.CREATED);
     }
 
     @GetMapping("/departments")
     public ResponseEntity<List<BolumRequestDTO>> getAllDepartments() {
-        List<BolumRequestDTO> departments = examActivityService.getAllDepartments();
-        // HTTP 200 Durum koduyla listeyi JSON formatında frontend'e fırlatır
-        return ResponseEntity.ok(departments);
+        return ResponseEntity.ok(examActivityService.getAllDepartments());
     }
 
     @PostMapping("/courses")
     public ResponseEntity<Integer> createDers(@RequestBody DersRequestDTO req) {
-
-        Integer id = examActivityService.addNewDers(req);
-
-        return new ResponseEntity<>(id, HttpStatus.CREATED);
+        return new ResponseEntity<>(examActivityService.addNewDers(req), HttpStatus.CREATED);
     }
 
     @GetMapping("/courses")
     public ResponseEntity<List<DersRequestDTO>> getAllCourses() {
-        List<DersRequestDTO> courses = examActivityService.getAllCourses();
-        // HTTP 200 Durum koduyla listeyi JSON formatında frontend'e fırlatır
-        return ResponseEntity.ok(courses);
+        return ResponseEntity.ok(examActivityService.getAllCourses());
     }
 
     @GetMapping("/dashboard")
     public ResponseEntity<DashboardRequestDTO> getDashboardStats() {
-        // Zaten halihazırda enjekte edilmiş olan ortak servisini çağırıyorsun
-        DashboardRequestDTO stats = examActivityService.getDashboard();
-        return ResponseEntity.ok(stats);
+        return ResponseEntity.ok(examActivityService.getDashboard());
     }
 
     @GetMapping("/sessions")
     public ResponseEntity<List<OturumRequestDTO>> getAllSessions() {
-        List<OturumRequestDTO> sessions = examActivityService.getAllSessions();
-        return ResponseEntity.ok(sessions);
+        return ResponseEntity.ok(examActivityService.getAllSessions());
     }
 
-    // Oturum Ekleme Endpoint'i (POST /api/sessions)
     @PostMapping("/sessions")
     public ResponseEntity<Integer> createSession(@RequestBody OturumRequestDTO dto) {
-        Integer newSessionId = examActivityService.addNewSession(dto);
-        return ResponseEntity.ok(newSessionId);
+        return ResponseEntity.ok(examActivityService.addNewSession(dto));
     }
 
     @PostMapping("/capacities")
     public ResponseEntity<Integer> createClassroom(@RequestBody ClassroomRequestDTO dto) {
-        Integer newRoomId = examActivityService.addNewClassroom(dto);
-        return ResponseEntity.ok(newRoomId);
+        return ResponseEntity.ok(examActivityService.addNewClassroom(dto));
     }
 
     @GetMapping("/capacities")
     public ResponseEntity<List<ClassroomRequestDTO>> getAllClassrooms() {
-        // Burada salonları listelediğin servis metodunu çağırmalısın
-        List<ClassroomRequestDTO> classrooms = examActivityService.getAllClassrooms();
-        return ResponseEntity.ok(classrooms);
+        return ResponseEntity.ok(examActivityService.getAllClassrooms());
     }
 
-    // 1. Gözetmenleri / Personeli Getiren Endpoint (GET /api/supervisors)
     @GetMapping("/supervisors")
-    public ResponseEntity<List<?>> getAllSupervisors() {
-        // TODO: Eğer hazırda servis metodun yoksa şimdilik boş liste dönerek 404'ü kesebilirsin
-        // List<SupervisorResponseDTO> supervisors = examActivityService.getAllSupervisors();
-        // return ResponseEntity.ok(supervisors);
-        return ResponseEntity.ok(java.util.Collections.emptyList());
+    public ResponseEntity<List<SupervisorRequestDTO>> getAllSupervisors() {
+        return ResponseEntity.ok(examActivityService.getAllSupervisors());
     }
 
-    // 2. Sınav Programını Getiren Endpoint (GET /api/exams)
+    @PostMapping("/supervisors")
+    public ResponseEntity<Integer> createSupervisor(@RequestBody SupervisorRequestDTO req) {
+        return new ResponseEntity<>(examActivityService.addNewSupervisor(req), HttpStatus.CREATED);
+    }
+
+    @PostMapping("/supervisors/{id}/leave")
+    public ResponseEntity<Void> createSupervisorLeave(@PathVariable Integer id, @RequestBody Map<String, String> req) {
+        examActivityService.addSupervisorLeave(
+                id,
+                LocalDate.parse(req.get("date")),
+                Integer.valueOf(req.get("sessionId")),
+                req.getOrDefault("reason", "İzinli")
+        );
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/exams")
     public ResponseEntity<List<SinavRequestDTO>> getAllExams() {
-        List<SinavRequestDTO> allExams = examActivityService.getAllExams();
-        return ResponseEntity.ok(allExams);
+        return ResponseEntity.ok(examActivityService.getAllExams());
     }
 
     @PostMapping("/exams")
     public ResponseEntity<Integer> createSinav(@RequestBody SinavRequestDTO req) {
-        Integer id = examActivityService.addNewSinav(req);
-        return new ResponseEntity<>(id, HttpStatus.CREATED);
+        return new ResponseEntity<>(examActivityService.addNewSinav(req), HttpStatus.CREATED);
     }
 
-    // 3. Log Kayıtlarını Getiren Endpoint (GET /api/logs)
+    @PostMapping("/assignments")
+    public ResponseEntity<Void> assignSupervisor(@RequestBody AssignmentRequestDTO req) {
+        examActivityService.assignSupervisor(req);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/logs")
-    public ResponseEntity<List<?>> getAllLogs() {
-        // TODO: Log kayıtlarını çeken servis metodunu bağla
-        // List<LogResponseDTO> logs = examActivityService.getAllLogs();
-        // return ResponseEntity.ok(logs);
-        return ResponseEntity.ok(java.util.Collections.emptyList());
+    public ResponseEntity<List<LogRequestDTO>> getAllLogs() {
+        return ResponseEntity.ok(examActivityService.getAllLogs());
     }
 
+    @GetMapping("/reports/exam-program")
+    public ResponseEntity<List<ReportRequestDTO>> getExamProgramReport() {
+        return ResponseEntity.ok(examActivityService.getExamProgramReport());
+    }
+
+    @PostMapping("/backup")
+    public ResponseEntity<Map<String, String>> runBackup() {
+        return ResponseEntity.ok(Map.of("message", examActivityService.runBackup()));
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, String>> handleBusinessError(IllegalArgumentException ex) {
+        return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
+    }
 }

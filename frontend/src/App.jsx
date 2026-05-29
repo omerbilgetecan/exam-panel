@@ -9,6 +9,7 @@ const pages = [
   { id: 'exams', label: 'Sınav Programı', icon: '◫' },
   { id: 'capacity', label: 'Kapasite', icon: '▥' },
   { id: 'supervisors', label: 'Gözetmen Atama', icon: '◎' },
+  { id: 'reports', label: 'Raporlar', icon: '≣' },
   { id: 'logs', label: 'Log Kayıtları', icon: '≡' },
 ]
 const initialClassroomForm = { classroomName: '', capacity: 60, classroomType: 'Sınıf', floor: 0 };
@@ -58,6 +59,7 @@ function App() {
   const [capacities, setCapacities] = useState([])
   const [supervisors, setSupervisors] = useState([])
   const [logs, setLogs] = useState([])
+  const [reports, setReports] = useState([])
   const [departments, setDepartments] = useState([])
   const [sessions, setSessions] = useState([])
   const [loading, setLoading] = useState(true)
@@ -83,7 +85,7 @@ function App() {
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      const [nextDashboard, nextCourses, nextExams, nextCapacities, nextSupervisors, nextLogs, nextDepartments, nextSessions] =
+      const [nextDashboard, nextCourses, nextExams, nextCapacities, nextSupervisors, nextLogs, nextDepartments, nextSessions, nextReports] =
         await Promise.all([
           api.getDashboard(),
           api.getCourses(),
@@ -93,6 +95,7 @@ function App() {
           api.getLogs(),
           api.getDepartments(),
           api.getSessions ? api.getSessions() : Promise.resolve([]),
+          api.getExamProgramReport ? api.getExamProgramReport() : Promise.resolve([]),
         ])
       setDashboard(nextDashboard ?? emptyDashboard)
       setCourses(nextCourses)
@@ -102,6 +105,7 @@ function App() {
       setLogs(nextLogs)
       setDepartments(nextDepartments)
       setSessions(nextSessions ?? [])
+      setReports(nextReports ?? [])
     } catch {
       setToast('API bağlantısı kurulamadı. Demo modu ile devam edebilirsin.')
       api.setDemoMode(true)
@@ -249,30 +253,15 @@ function App() {
 
     setBusy(true)
     try {
-      // 1. ADIM: Her halükarda 1. Salon için sınav kaydını oluşturuyoruz
-      await api.createExam(examForm) //
-
-      // 2. ADIM: Eğer kullanıcı bir 2. Salon da seçtiyse, hemen arkasından 2. kaydı tetikliyoruz
-      if (examForm.classroom2) {
-        // 1. salon verilerini bozmamak için formun bir kopyasını oluşturup sadece salon adını değiştiriyoruz
-        const secondExamPayload = {
-          ...examForm,
-          classroom: examForm.classroom2 // Sadece derslik bilgisini 2. salon yapıyoruz
-        }
-
-        // Aynı istek yapısıyla 2. sınavı da sisteme gönderiyoruz
-        await api.createExam(secondExamPayload)
-      }
-
-      // Başarılı ise modali kapat, toast mesajı göster ve verileri yenile
-      setModal(null) //
-      setToast(examForm.classroom2 ? 'İki farklı salon için sınavlar başarıyla programa eklendi.' : 'Yeni sınav programa eklendi.') //
-      await loadData() //
-      setPage('exams') //
+      await api.createExam(examForm)
+      setModal(null)
+      setToast('Yeni sınav programa eklendi. Salon kombinasyonu backend tarafından kontrol edildi.')
+      await loadData()
+      setPage('exams')
     } catch (error) {
-      setErrorText(error.message) //
+      setErrorText(error.message)
     } finally {
-      setBusy(false) //
+      setBusy(false)
     }
   }
 
@@ -401,6 +390,7 @@ const showCapacityWarning = useMemo(() => {
             {page === 'supervisors' && (
               <SupervisorList supervisors={supervisors} exams={exams} pendingExams={pendingExams} onAssign={() => setModal('assignment')} />
             )}
+            {page === 'reports' && <ReportList reports={reports} />}
             {page === 'logs' && <LogList logs={logs} onBackup={runBackup} busy={busy} />}
           </>
         )}
@@ -527,7 +517,7 @@ const showCapacityWarning = useMemo(() => {
           <form className="form-grid" onSubmit={submitPerson}>
             <label>Ad Soyad<input required value={personForm.name} onChange={(event) => setPersonForm({ ...personForm, name: event.target.value })} placeholder="Dr. Ayşe Demir" /></label>
             <label>Unvan<select value={personForm.title} onChange={(event) => setPersonForm({ ...personForm, title: event.target.value })}><option>Prof. Dr.</option><option>Doç. Dr.</option><option>Dr.</option><option>Arş. Gör.</option><option>Öğr. Gör.</option></select></label>
-            <label>Bölüm<select required value={personForm.department} onChange={(event) => setPersonForm({ ...personForm, department: event.target.value })}><option value="">Bölüm Seçin</option>{departments.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}</select></label>
+            <label>Bölüm<select required value={personForm.departmentId || ''} onChange={(event) => { const selectedDepartment = departments.find((department) => String(department.id) === event.target.value); setPersonForm({ ...personForm, departmentId: Number(event.target.value), department: selectedDepartment?.name ?? '' }) }}><option value="">Bölüm Seçin</option>{departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></label>
             <label>Durum<select value={personForm.availability} onChange={(event) => setPersonForm({ ...personForm, availability: event.target.value })}><option>Campüste</option><option>Yoğun</option><option>İzinli</option></select></label>
             <div className="form-actions"><button type="button" className="secondary-button" onClick={() => setModal(null)}>Vazgeç</button><button type="submit" className="primary-button" disabled={busy}>Kaydet</button></div>
           </form>
@@ -822,6 +812,47 @@ function SupervisorList({ supervisors, exams, pendingExams, onAssign }) {
       <div className="panel-heading"><div><h2>Gözetmen Atama</h2><p>{pendingExams.length} sınav için atama bekleniyor.</p></div><button type="button" className="primary-button" disabled={!pendingExams.length || !supervisors.length} onClick={onAssign}>Gözetmen Ata</button></div>
       <PersonnelCards supervisors={supervisors} />
       <div className="assignment-section"><h3>Gözetmenli Sınav Programı</h3><ExamTable exams={assignedExams} compact /></div>
+    </article>
+  )
+}
+
+function ReportList({ reports }) {
+  if (!reports.length) return <EmptyState text="Henüz raporlanacak sınav kaydı bulunmuyor." />
+  return (
+    <article className="panel page-panel">
+      <div className="panel-heading"><div><h2>Sınav Programı Raporu</h2><p>Ders, oturum, salon, kapasite ve gözetmen çıktısı.</p></div></div>
+      <div className="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Ders</th>
+              <th>Bölüm</th>
+              <th>Yarıyıl</th>
+              <th>Tarih</th>
+              <th>Oturum</th>
+              <th>Salon</th>
+              <th>Kapasite</th>
+              <th>Gözetmen</th>
+              <th>Durum</th>
+            </tr>
+          </thead>
+          <tbody>
+            {reports.map((report, index) => (
+              <tr key={`${report.courseCode}-${report.date}-${report.classroom}-${index}`}>
+                <td><strong>{report.courseCode}</strong><br />{report.courseName}</td>
+                <td>{report.department}</td>
+                <td>{report.semester}</td>
+                <td>{report.date}</td>
+                <td>{report.session}</td>
+                <td>{report.classroom}</td>
+                <td>{report.studentCount} / {report.capacity}</td>
+                <td>{report.supervisor}</td>
+                <td><StatusBadge value={report.status} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </article>
   )
 }

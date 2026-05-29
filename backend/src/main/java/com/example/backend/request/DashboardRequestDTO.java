@@ -13,4 +13,7 @@ public class DashboardRequestDTO {
     private Integer courseCount;
     private Integer personnelCount;
     private Integer examCount;
+    private Integer assignedCount;
+    private Integer pendingCount;
+    private Integer roomUsage;
 }

@@ -30,7 +30,7 @@ public class ClassroomRepository {
     public List<Object[]> spSalonlariListele() {
         // Veritabanındaki Derslikler tablosundan aktif olan salonları çekiyoruz
         return entityManager.createNativeQuery(
-                        "SELECT DerslikID, DerslikAdi, Kapasite, Kat FROM dbo.Derslikler WHERE Aktif = 1")
+                        "SELECT DerslikID, DerslikAdi, Kapasite, DerslikTipi, Kat, Aktif FROM dbo.Derslikler WHERE Aktif = 1 ORDER BY Kat, Kapasite DESC, DerslikAdi")
                 .getResultList();
     }
 }

@@ -23,4 +23,11 @@ public class SinavRequestDTO {
     private String courseCode;
     private String courseName;
     private String classroomName;
+    private Integer departmentId;
+    private String department;
+    private Integer semester;
+    private String time;
+    private String sessionName;
+    private String supervisor;
+    private String status;
 }
