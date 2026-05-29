@@ -179,5 +179,24 @@ public class ExamActivityServiceImpl {
         return dtoList;
     }
 
+    @Transactional()
+    public List<DersRequestDTO> getCoursesWithoutExam() {
+        List<Object[]> rows = dersRepository.spSinaviOlmayanDersleriListele();
+        List<DersRequestDTO> dtoList = new ArrayList<>();
+
+        for (Object[] row : rows) {
+            DersRequestDTO dto = new DersRequestDTO();
+            dto.setId(((Number) row[0]).intValue());
+            dto.setCode(row[1].toString());
+            dto.setName(row[2].toString());
+            dto.setStudentCount(((Number) row[3]).intValue());
+            dto.setSemester(((Number) row[4]).intValue());
+            dto.setDepartmentId(((Number) row[5]).intValue());
+
+            dtoList.add(dto);
+        }
+        return dtoList;
+    }
+
 
 }

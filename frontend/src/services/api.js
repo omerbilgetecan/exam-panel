@@ -356,4 +356,13 @@ export const api = {
     logEvent('Yedekleme tamamlandı', 'SQL Server backup procedure çalıştırıldı')
     return { message: 'Veritabanı yedeği başarıyla oluşturuldu.' }
   },
+
+  async getCoursesWithoutExam() {
+    if (!readDemoMode()) {
+      return request('/courses/no-exam', {}, []);
+    }
+    // Demo modu için normal dersleri dön
+    await wait();
+    return clone(demoData.courses || []);
+  }
 }

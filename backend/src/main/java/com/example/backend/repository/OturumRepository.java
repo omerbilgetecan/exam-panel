@@ -47,4 +47,24 @@ public class OturumRepository {
 
         return (result != null) ? ((Number) result).intValue() : null;
     }
+
+    @SuppressWarnings("unchecked")
+    public List<Object[]> getOturumStatusByDateAndClassrooms(String date, String classroom1, String classroom2) {
+        // Eğer 2. salon seçilmemişse sorgunun patlamaması için geçici bir değer atıyoruz
+        String cl2 = (classroom2 == null || classroom2.trim().isEmpty()) ? "---NONE---" : classroom2;
+
+        return entityManager.createNativeQuery(
+                        "SELECT o.OturumID, o.OturumAdi, o.BaslangicSaati, o.BitisSaati, " +
+                                "CASE WHEN EXISTS (" +
+                                "    SELECT 1 FROM dbo.Sinavlar s " +
+                                "    WHERE s.Tarih = :date " +
+                                "    AND s.OturumID = o.OturumID " +
+                                "    AND (s.DerslikID = :classroom1 OR s.DerslikID = :classroom2)" +
+                                ") THEN 1 ELSE 0 END as IsConflict " +
+                                "FROM dbo.Oturumlar o")
+                .setParameter("date", date)
+                .setParameter("classroom1", classroom1)
+                .setParameter("classroom2", cl2)
+                .getResultList();
+    }
 }

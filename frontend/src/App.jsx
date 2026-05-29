@@ -54,6 +54,8 @@ function App() {
   const [page, setPage] = useState('dashboard')
   const [dashboard, setDashboard] = useState(emptyDashboard)
   const [courses, setCourses] = useState([])
+  const [examModalCourses, setExamModalCourses] = useState([])
+
   const [exams, setExams] = useState([])
   const [capacities, setCapacities] = useState([])
   const [supervisors, setSupervisors] = useState([])
@@ -149,19 +151,41 @@ function App() {
     }
   }
 
-  function openExamModal() {
+  async function openExamModal() {
     setErrorText('')
-    setExamForm({
-      ...initialExamForm,
-      courseId: courses[0]?.id ? String(courses[0].id) : '',
-      date: '',
-      classroom: capacities[0]?.classroom ?? '',
-      classroom2: '', // 2. salonu başlangıçta boşaltıyoruz
-      studentCount: courses[0]?.studentCount ?? 30,
-      sessionId: '',
-    })
-    setModal('exam')
+    try {
+      // 🎯 Backend'den gelen veriyi çekiyoruz
+      const filteredCourses = await api.getCoursesWithoutExam();
+
+      // 🔍 Konsola gelen veriyi basıp kontrol ediyoruz (F12'de görünecek)
+      console.log("Backend'den Gelen Filtreli Dersler:", filteredCourses);
+
+      // Eğer veri null veya undefined geldiyse boş diziye eşitle ki patlamasın
+      const safeCourses = filteredCourses || [];
+
+      setExamModalCourses(safeCourses);
+
+      setExamForm({
+        ...initialExamForm,
+        // Güvenli dizi üzerinden ilk elemanı seçiyoruz
+        courseId: safeCourses[0]?.id ? String(safeCourses[0].id) : '',
+        date: '', //
+        classroom: capacities[0]?.classroom ?? '', //
+        classroom2: '', //
+        studentCount: safeCourses[0]?.studentCount ?? 30,
+        sessionId: '', //
+      });
+
+      setModal('exam'); //
+    } catch (error) {
+      // 🔍 Gerçek JavaScript hatasını konsola yazdırıyoruz ki tam olarak neyin patlattığını görelim
+      console.error("openExamModal Fonksiyon İçi Hatası:", error);
+      setToast("Ders listesi işlenirken bir hata oluştu.");
+    }
   }
+
+
+
 
   async function submitCourse(event) {
     event.preventDefault()
@@ -543,11 +567,14 @@ const showCapacityWarning = useMemo(() => {
             <label>
               Ders
               <select required value={examForm.courseId} onChange={(event) => {
-                const selected = courses.find((course) => String(course.id) === event.target.value)
+                // 🎯 Taramayı genel listeyle değil modal listesiyle yapıyoruz:
+                const selected = examModalCourses.find((course) => String(course.id) === event.target.value)
                 setExamForm({ ...examForm, courseId: event.target.value, studentCount: selected?.studentCount ?? examForm.studentCount, date: '', classroom: '', classroom2: '', sessionId: '' })
               }}>
                 <option value="">Ders seçin</option>
-                {courses.map((course) => <option key={course.id} value={course.id}>{course.code} - {course.name}</option>)}
+
+                {/* 🔥 İŞTE KRİTİK DEĞİŞİKLİK: Artık genel havuz değil, sadece sınavı olmayan dersler listeleniyor */}
+                {examModalCourses.map((course) => <option key={course.id} value={course.id}>{course.code} - {course.name}</option>)}
               </select>
             </label>
 
@@ -760,7 +787,7 @@ function PersonnelCards({ supervisors }) {
 }
 
 function ExamTable({ exams, compact = false }) {
-  if (!exams.length) return <EmptyState text="Henüz sınav kaydı bulunmuyor." />
+  if (!exams.length) return <EmptyState text="Henüz sınav kaydı bulunmuyor." /> //[cite: 2]
   return (
     <div className="table-wrapper">
       <table>
@@ -768,7 +795,7 @@ function ExamTable({ exams, compact = false }) {
           <tr>
             <th>Ders</th>
             <th>Tarih</th>
-            <th>Salon</th> {/* */}
+            <th>Salon</th>
             {!compact && <th>Öğrenci</th>}
             <th>Gözetmen</th>
             <th>Durum</th>
@@ -779,11 +806,7 @@ function ExamTable({ exams, compact = false }) {
             <tr key={exam.id}>
               <td><strong>{exam.courseCode}</strong><small>{exam.courseName}</small></td>
               <td>{exam.date}</td>
-
-              {/* 🎯 BURAYI DEĞİŞTİRİYORSUN: */}
-              {/* Backend View'dan gelen salon ismini (classroomName) basar, eğer null ise hata vermemesi için eski değere (classroom) düşer */}
               <td>{exam.classroomName || exam.classroom}</td>
-
               {!compact && <td>{exam.studentCount}</td>}
               <td>{exam.supervisor}</td>
               <td><StatusBadge value={exam.status} /></td>

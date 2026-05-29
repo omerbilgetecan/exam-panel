@@ -114,4 +114,9 @@ public class ExamActivityController {
         return ResponseEntity.ok(java.util.Collections.emptyList());
     }
 
+    @GetMapping("/courses/no-exam")
+    public ResponseEntity<List<DersRequestDTO>> getCoursesWithoutExam() {
+        return ResponseEntity.ok(examActivityService.getCoursesWithoutExam());
+    }
+
 }

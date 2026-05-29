@@ -68,6 +68,18 @@ public class DersRepository {
         return spDersleriGetir().size();
     }
 
+    @SuppressWarnings("unchecked")
+    public List<Object[]> spSinaviOlmayanDersleriListele() {
+        // Sınavlar (dbo.Sinavlar) tablosunda henüz kaydı geçmeyen dersleri filtreleyerek getiriyoruz
+        return entityManager.createNativeQuery(
+                        "SELECT d.DersID, d.DersKodu, d.DersAdi, d.OgrenciSayisi, d.Yariyil, d.BolumID " +
+                                "FROM dbo.Dersler d " +
+                                "WHERE NOT EXISTS (" +
+                                "    SELECT 1 FROM dbo.Sinavlar s WHERE s.DersID = d.DersID" +
+                                ")")
+                .getResultList();
+    }
+
 
 
 }
