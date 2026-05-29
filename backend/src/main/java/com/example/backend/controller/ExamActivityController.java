@@ -1,8 +1,6 @@
 package com.example.backend.controller;
 
-import com.example.backend.request.BolumRequestDTO;
-import com.example.backend.request.DashboardRequestDTO;
-import com.example.backend.request.DersRequestDTO;
+import com.example.backend.request.*;
 import com.example.backend.service.ExamActivityServiceImpl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -59,4 +57,56 @@ public class ExamActivityController {
         return ResponseEntity.ok(stats);
     }
 
+    @GetMapping("/sessions")
+    public ResponseEntity<List<OturumRequestDTO>> getAllSessions() {
+        List<OturumRequestDTO> sessions = examActivityService.getAllSessions();
+        return ResponseEntity.ok(sessions);
+    }
+
+    // Oturum Ekleme Endpoint'i (POST /api/sessions)
+    @PostMapping("/sessions")
+    public ResponseEntity<Integer> createSession(@RequestBody OturumRequestDTO dto) {
+        Integer newSessionId = examActivityService.addNewSession(dto);
+        return ResponseEntity.ok(newSessionId);
+    }
+
+    @PostMapping("/capacities")
+    public ResponseEntity<Integer> createClassroom(@RequestBody ClassroomRequestDTO dto) {
+        Integer newRoomId = examActivityService.addNewClassroom(dto);
+        return ResponseEntity.ok(newRoomId);
+    }
+
+    @GetMapping("/capacities")
+    public ResponseEntity<List<ClassroomRequestDTO>> getAllClassrooms() {
+        // Burada salonları listelediğin servis metodunu çağırmalısın
+        List<ClassroomRequestDTO> classrooms = examActivityService.getAllClassrooms();
+        return ResponseEntity.ok(classrooms);
+    }
+
+    // 1. Gözetmenleri / Personeli Getiren Endpoint (GET /api/supervisors)
+    @GetMapping("/supervisors")
+    public ResponseEntity<List<?>> getAllSupervisors() {
+        // TODO: Eğer hazırda servis metodun yoksa şimdilik boş liste dönerek 404'ü kesebilirsin
+        // List<SupervisorResponseDTO> supervisors = examActivityService.getAllSupervisors();
+        // return ResponseEntity.ok(supervisors);
+        return ResponseEntity.ok(java.util.Collections.emptyList());
+    }
+
+    // 2. Sınav Programını Getiren Endpoint (GET /api/exams)
+    @GetMapping("/exams")
+    public ResponseEntity<List<?>> getAllExams() {
+        // TODO: Sınavları listelediğin servis metodunu bağla
+        // List<ExamResponseDTO> exams = examActivityService.getAllExams();
+        // return ResponseEntity.ok(exams);
+        return ResponseEntity.ok(java.util.Collections.emptyList());
+    }
+
+    // 3. Log Kayıtlarını Getiren Endpoint (GET /api/logs)
+    @GetMapping("/logs")
+    public ResponseEntity<List<?>> getAllLogs() {
+        // TODO: Log kayıtlarını çeken servis metodunu bağla
+        // List<LogResponseDTO> logs = examActivityService.getAllLogs();
+        // return ResponseEntity.ok(logs);
+        return ResponseEntity.ok(java.util.Collections.emptyList());
+    }
 }

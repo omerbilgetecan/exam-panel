@@ -19,6 +19,11 @@ const initialData = {
     { id: 3, code: 'MAT102', name: 'Lineer Cebir', department: 'Matematik', semester: 'Bahar', studentCount: 58 },
     { id: 4, code: 'YAZ402', name: 'Yazılım Proje Yönetimi', department: 'Yazılım Müh.', semester: 'Bahar', studentCount: 26 },
   ],
+  sessions: [ // Demo modunda arayüzün boş kalmaması için varsayılan seanslar
+    { id: 1, name: 'Oturum 1', startTime: '09:30', endTime: '11:00' },
+    { id: 2, name: 'Oturum 2', startTime: '11:30', endTime: '13:00' },
+    { id: 3, name: 'Oturum 3', startTime: '14:00', endTime: '15:30' }
+  ],
   exams: [
     { id: 1, courseId: 1, courseCode: 'BLM301', courseName: 'Veri Tabanı Yönetimi', date: '2026-06-02', time: '09:30', classroom: 'A-201', studentCount: 42, supervisor: 'Dr. Selin Kaya', status: 'Planlandı' },
     { id: 2, courseId: 2, courseCode: 'BLM205', courseName: 'Web Programlama', date: '2026-06-02', time: '13:30', classroom: 'LAB-3', studentCount: 34, supervisor: 'Atama Bekliyor', status: 'Atama Bekliyor' },
@@ -56,7 +61,6 @@ const logEvent = (action, detail, level = 'Başarılı') => {
   demoData.logs.unshift({ id: Date.now(), time: now, action, detail, level })
 }
 
-// Güvenli hale getirilmiş ve fallback (yedek veri) destekleyen request fonksiyonu
 async function request(path, options, fallbackValue = null) {
   try {
     const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -65,15 +69,16 @@ async function request(path, options, fallbackValue = null) {
     })
 
     if (!response.ok) {
-      console.warn(`API Hatası (${response.status}): ${path} yüklenemedi. Varsayılan veri dönülüyor.`)
-      return fallbackValue
+      const errorData = await response.json().catch(() => ({}));
+      const errorMessage = errorData.message || `API Hatası (${response.status}): ${path} yüklenemedi.`;
+      throw new Error(errorMessage);
     }
 
     if (response.status === 204) return null
     return response.json()
   } catch (error) {
     console.error(`Sunucu bağlantı hatası: ${path} adresine erişilemedi.`, error)
-    return fallbackValue
+    throw error;
   }
 }
 
@@ -106,7 +111,7 @@ export const api = {
         }
       })
     }
-    
+
     await wait()
     const newDepartment = { ...department, id: Date.now() }
     if (!demoData.departments) demoData.departments = []
@@ -120,6 +125,9 @@ export const api = {
       courseCount: 0,
       personnelCount: 0,
       examCount: 0,
+      assignedCount: 0,
+      roomUsage: 0,
+      pendingCount: 0
     }
 
     if (!readDemoMode()) return request('/dashboard', {}, emptyDashboard)
@@ -127,33 +135,34 @@ export const api = {
     const assigned = demoData.exams.filter((exam) => exam.supervisor !== 'Atama Bekliyor').length
     const usedSeats = demoData.capacities.reduce((sum, room) => sum + room.assigned, 0)
     const totalSeats = demoData.capacities.reduce((sum, room) => sum + room.capacity, 0)
+    const roomUsageRatio = totalSeats > 0 ? Math.round((usedSeats / totalSeats) * 100) : 0
+
     return {
       courseCount: demoData.courses.length,
       personnelCount: demoData.supervisors.length,
       examCount: demoData.exams.length,
+      assignedCount: assigned,
+      roomUsage: roomUsageRatio,
+      pendingCount: demoData.exams.length - assigned
     }
   },
 
   async getCourses() {
-      if (!readDemoMode()) {
-        // Backend'den DersRequestDTO listesini çekiyoruz
-        const data = await request('/courses', {}, []);
-
-        // Backend'den gelen veriyi frontend bileşenlerinin beklediği formata map'liyoruz
-        return data.map(course => ({
-          id: course.id,
-          code: course.code,
-          name: course.name,
-          studentCount: course.studentCount,
-          semester: course.semester,
-          departmentId: course.departmentId, // Arka planda saklanan ID
-          department: course.department       // Ekranda görünecek olan bölüm ismi (Yazılım Müh. vb.)
-        }));
-      }
-
-      await wait();
-      return clone(demoData.courses);
-    },
+    if (!readDemoMode()) {
+      const data = await request('/courses', {}, []);
+      return data.map(course => ({
+        id: course.id,
+        code: course.code,
+        name: course.name,
+        studentCount: course.studentCount,
+        semester: course.semester,
+        departmentId: course.departmentId,
+        department: course.department
+      }));
+    }
+    await wait();
+    return clone(demoData.courses);
+  },
 
   async getExams() {
     if (!readDemoMode()) return request('/exams', {}, [])
@@ -162,7 +171,17 @@ export const api = {
   },
 
   async getCapacities() {
-    if (!readDemoMode()) return request('/capacities', {}, [])
+    if (!readDemoMode()) {
+      const data = await request('/capacities', {}, []);
+      // 🎯 DÜZELTME: Backend'den (ClassroomRequestDTO) gelen listeyi arayüze mapliyoruz
+      return data.map((room, idx) => ({
+        id: room.id || idx + 1,
+        classroom: room.classroomName || "Tanımsız Salon", // backend: classroomName -> frontend: classroom
+        capacity: room.capacity || 60,
+        assigned: 0,
+        building: room.floor === 0 ? "Zemin Kat" : room.floor + ". Kat"
+      }));
+    }
     await wait()
     return clone(demoData.capacities)
   },
@@ -179,18 +198,91 @@ export const api = {
     return clone(demoData.logs)
   },
 
-  async createCourse(course) {
+  async getSessions() {
+    if (!readDemoMode()) return request('/sessions', {}, [])
+    await wait()
+    return clone(demoData.sessions || [])
+  },
+
+  async createSession(session) {
+    if (session.startTime >= session.endTime) {
+      throw new Error('Başlangıç saati, bitiş saatinden sonra veya eşit olamaz!');
+    }
+
     if (!readDemoMode()) {
-      // Backend DTO'sunun tam olarak beklediği JSON şablonunu oluşturuyoruz
+      const existing = await api.getSessions();
+      const isDuplicate = existing.some(s => s.startTime === session.startTime && s.endTime === session.endTime);
+      if (isDuplicate) {
+        throw new Error('Bu zaman aralığına ait bir oturum zaten mevcut!');
+      }
+
       const backendPayload = {
-        code: course.code,                             // DersKodu
-        name: course.name,                             // DersAdi
-        studentCount: Number(course.studentCount),     // OgrenciSayisi (Sayıya dönüştürdük)
-        semester: Number(course.semester),             // Yariyil (Sayıya dönüştürdük)
-        departmentId: Number(course.departmentId)      // BolumID (Sayıya dönüştürdük)
+        name: session.name,
+        startTime: session.startTime,
+        endTime: session.endTime
       };
 
-      // İsteği gönderirken Content-Type başlığının doğru gittiğinden emin oluyoruz
+      return request('/sessions', {
+        method: 'POST',
+        body: JSON.stringify(backendPayload),
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    await wait();
+    const isDuplicateDemo = (demoData.sessions || []).some(s => s.startTime === session.startTime && s.endTime === session.endTime);
+    if (isDuplicateDemo) {
+      throw new Error('Bu zaman aralığına ait bir oturum zaten mevcut!');
+    }
+
+    const newSession = { ...session, id: Date.now() };
+    if (!demoData.sessions) demoData.sessions = [];
+    demoData.sessions.push(newSession);
+    logEvent('Oturum tanımlandı', `${newSession.name} (${newSession.startTime} - ${newSession.endTime})`);
+    return clone(newSession);
+  },
+
+  async createClassroom(classroom) {
+    if (!readDemoMode()) {
+      const backendPayload = {
+        classroomName: classroom.classroomName,
+        capacity: Number(classroom.capacity),
+        classroomType: classroom.classroomType,
+        floor: Number(classroom.floor),
+        active: true
+      };
+
+      return request('/capacities', {
+        method: 'POST',
+        body: JSON.stringify(backendPayload),
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    await wait();
+    const newRoom = {
+      id: Date.now(),
+      classroom: classroom.classroomName,
+      capacity: Number(classroom.capacity),
+      assigned: 0,
+      building: classroom.floor + ". Kat"
+    };
+    if (!demoData.capacities) demoData.capacities = [];
+    demoData.capacities.push(newRoom);
+    logEvent('Salon eklendi', `${newRoom.classroom} (Kap: ${newRoom.capacity})`);
+    return clone(newRoom);
+  },
+
+  async createCourse(course) {
+    if (!readDemoMode()) {
+      const backendPayload = {
+        code: course.code,
+        name: course.name,
+        studentCount: Number(course.studentCount),
+        semester: Number(course.semester),
+        departmentId: Number(course.departmentId)
+      };
+
       return request('/courses', {
         method: 'POST',
         body: JSON.stringify(backendPayload),
@@ -200,7 +292,6 @@ export const api = {
       });
     }
 
-    // Demo modu kodlarınız aynen kalıyor
     await wait();
     const newCourse = { ...course, id: Date.now(), studentCount: Number(course.studentCount) };
     demoData.courses.unshift(newCourse);
