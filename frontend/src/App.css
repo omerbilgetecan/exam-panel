@@ -396,10 +396,6 @@ tbody td small {
   gap: 19px;
 }
 
-.page-panel > .capacity-grid {
-  padding: 0 24px 28px;
-}
-
 .room-card {
   border: 1px solid #e6ebf4;
   background: #fff;

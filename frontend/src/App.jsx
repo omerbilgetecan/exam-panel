@@ -6,18 +6,18 @@ const pages = [
   { id: 'dashboard', label: 'Dashboard', icon: '▦' },
   { id: 'courses', label: 'Dersler', icon: '▤' },
   { id: 'personnel', label: 'Personel', icon: '◉' },
-  { id: 'rooms', label: 'Salonlar', icon: '▧' },
   { id: 'exams', label: 'Sınav Programı', icon: '◫' },
   { id: 'capacity', label: 'Kapasite', icon: '▥' },
   { id: 'supervisors', label: 'Gözetmen Atama', icon: '◎' },
   { id: 'logs', label: 'Log Kayıtları', icon: '≡' },
 ]
-
-const emptyDashboard = { examCount: 0, assignedCount: 0, roomUsage: 0, pendingCount: 0, courseCount: 0, personnelCount: 0, roomCount: 0 }
-const initialExamForm = { courseId: '', date: '2026-06-05', time: '09:30', classroom: '', studentCount: 30 }
-const initialCourseForm = { code: '', name: '', department: '', semester: 'Bahar', studentCount: 30 }
+const initialClassroomForm = { classroomName: '', capacity: 60, classroomType: 'Sınıf', floor: 0 };
+const initialExamForm = { courseId: '', date: '', sessionId: '', classroom: '', classroom2: '', studentCount: 30 }
+const emptyDashboard = { examCount: 0, assignedCount: 0, roomUsage: 0, pendingCount: 0, courseCount: 0, personnelCount: 0 }
+const initialCourseForm = { code: '', name: '', departmentId: '', semester: 1, studentCount: 30 }
 const initialPersonForm = { name: '', department: '', title: 'Arş. Gör.', availability: 'Uygun' }
-const initialRoomForm = { classroom: '', building: '', capacity: 40 }
+const initialDepartmentForm = { name: '' }
+const initialSessionForm = { name: '', startTime: '', endTime: '' }
 
 function StatusBadge({ value }) {
   const variant =
@@ -58,15 +58,21 @@ function App() {
   const [capacities, setCapacities] = useState([])
   const [supervisors, setSupervisors] = useState([])
   const [logs, setLogs] = useState([])
+  const [departments, setDepartments] = useState([])
+  const [sessions, setSessions] = useState([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [demoMode, setDemoMode] = useState(api.isDemoMode())
   const [modal, setModal] = useState(null)
   const [toast, setToast] = useState('')
+  const [errorText, setErrorText] = useState('')
+
+  const [classroomForm, setClassroomForm] = useState(initialClassroomForm);
   const [examForm, setExamForm] = useState(initialExamForm)
   const [courseForm, setCourseForm] = useState(initialCourseForm)
   const [personForm, setPersonForm] = useState(initialPersonForm)
-  const [roomForm, setRoomForm] = useState(initialRoomForm)
+  const [departmentForm, setDepartmentForm] = useState(initialDepartmentForm)
+  const [sessionForm, setSessionForm] = useState(initialSessionForm)
   const [assignment, setAssignment] = useState({ examId: '', supervisorId: '' })
 
   const pendingExams = useMemo(
@@ -77,7 +83,7 @@ function App() {
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      const [nextDashboard, nextCourses, nextExams, nextCapacities, nextSupervisors, nextLogs] =
+      const [nextDashboard, nextCourses, nextExams, nextCapacities, nextSupervisors, nextLogs, nextDepartments, nextSessions] =
         await Promise.all([
           api.getDashboard(),
           api.getCourses(),
@@ -85,6 +91,8 @@ function App() {
           api.getCapacities(),
           api.getSupervisors(),
           api.getLogs(),
+          api.getDepartments(),
+          api.getSessions ? api.getSessions() : Promise.resolve([]),
         ])
       setDashboard(nextDashboard ?? emptyDashboard)
       setCourses(nextCourses)
@@ -92,6 +100,8 @@ function App() {
       setCapacities(nextCapacities)
       setSupervisors(nextSupervisors)
       setLogs(nextLogs)
+      setDepartments(nextDepartments)
+      setSessions(nextSessions ?? [])
     } catch {
       setToast('API bağlantısı kurulamadı. Demo modu ile devam edebilirsin.')
       api.setDemoMode(true)
@@ -121,12 +131,34 @@ function App() {
     setToast(nextMode ? 'Demo veri modu aktif.' : 'REST API modu aktif.')
   }
 
+  async function submitClassroom(event) {
+    event.preventDefault();
+    setErrorText('');
+    setBusy(true);
+    try {
+      await api.createClassroom(classroomForm);
+      setModal(null);
+      setClassroomForm(initialClassroomForm);
+      setToast('Yeni sınıf/salon başarıyla sisteme eklendi.');
+      await loadData();
+      setPage('capacity');
+    } catch (error) {
+      setErrorText(error.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function openExamModal() {
+    setErrorText('')
     setExamForm({
       ...initialExamForm,
       courseId: courses[0]?.id ? String(courses[0].id) : '',
+      date: '',
       classroom: capacities[0]?.classroom ?? '',
+      classroom2: '', // 2. salonu başlangıçta boşaltıyoruz
       studentCount: courses[0]?.studentCount ?? 30,
+      sessionId: '',
     })
     setModal('exam')
   }
@@ -165,16 +197,15 @@ function App() {
     }
   }
 
-  async function submitRoom(event) {
+  async function submitDepartment(event) {
     event.preventDefault()
     setBusy(true)
     try {
-      await api.createRoom(roomForm)
+      await api.createDepartment(departmentForm)
       setModal(null)
-      setRoomForm(initialRoomForm)
-      setToast('Salon kaydı sisteme eklendi.')
+      setDepartmentForm(initialDepartmentForm)
+      setToast('Bölüm kaydı sisteme eklendi.')
       await loadData()
-      setPage('rooms')
     } catch (error) {
       setToast(error.message)
     } finally {
@@ -182,19 +213,66 @@ function App() {
     }
   }
 
-  async function submitExam(event) {
+  async function submitSession(event) {
     event.preventDefault()
+    setErrorText('')
+
+    if (sessionForm.startTime >= sessionForm.endTime) {
+      setErrorText('Hata: Başlangıç saati bitiş saatinden büyük veya eşit olamaz!')
+      return
+    }
+
     setBusy(true)
     try {
-      await api.createExam(examForm)
+      if (api.createSession) {
+        await api.createSession(sessionForm)
+      }
       setModal(null)
-      setToast('Yeni sınav programa eklendi.')
+      setSessionForm(initialSessionForm)
+      setToast('Yeni oturum seansı sisteme eklendi.')
       await loadData()
-      setPage('exams')
     } catch (error) {
-      setToast(error.message)
+      setErrorText(error.message)
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function submitExam(event) {
+    event.preventDefault()
+    setErrorText('')
+
+    if (!examForm.sessionId) {
+      setErrorText('Lütfen uygun oturumlardan birini seçiniz.')
+      return
+    }
+
+    setBusy(true)
+    try {
+      // 1. ADIM: Her halükarda 1. Salon için sınav kaydını oluşturuyoruz
+      await api.createExam(examForm) //
+
+      // 2. ADIM: Eğer kullanıcı bir 2. Salon da seçtiyse, hemen arkasından 2. kaydı tetikliyoruz
+      if (examForm.classroom2) {
+        // 1. salon verilerini bozmamak için formun bir kopyasını oluşturup sadece salon adını değiştiriyoruz
+        const secondExamPayload = {
+          ...examForm,
+          classroom: examForm.classroom2 // Sadece derslik bilgisini 2. salon yapıyoruz
+        }
+
+        // Aynı istek yapısıyla 2. sınavı da sisteme gönderiyoruz
+        await api.createExam(secondExamPayload)
+      }
+
+      // Başarılı ise modali kapat, toast mesajı göster ve verileri yenile
+      setModal(null) //
+      setToast(examForm.classroom2 ? 'İki farklı salon için sınavlar başarıyla programa eklendi.' : 'Yeni sınav programa eklendi.') //
+      await loadData() //
+      setPage('exams') //
+    } catch (error) {
+      setErrorText(error.message) //
+    } finally {
+      setBusy(false) //
     }
   }
 
@@ -227,6 +305,26 @@ function App() {
       setBusy(false)
     }
   }
+
+  const selectedCourseDetails = useMemo(() => {
+    return courses.find(c => String(c.id) === examForm.courseId)
+  }, [courses, examForm.courseId])
+
+const showCapacityWarning = useMemo(() => {
+  if (!examForm.classroom) return false;
+
+  // 1. Salonun kapasitesini bul
+  const room1 = capacities.find(r => r.classroom === examForm.classroom);
+  let totalCapacity = room1 ? room1.capacity : 0;
+
+  // Eğer 2. salon da seçildiyse onun da kapasitesini toplama ekle
+  if (examForm.classroom2) {
+    const room2 = capacities.find(r => r.classroom === examForm.classroom2);
+    totalCapacity += room2 ? room2.capacity : 0;
+  }
+
+  return totalCapacity < Number(examForm.studentCount);
+}, [capacities, examForm.classroom, examForm.classroom2, examForm.studentCount]);
 
   const title = pages.find((entry) => entry.id === page)?.label
 
@@ -270,14 +368,20 @@ function App() {
             <button type="button" className="secondary-button" disabled={busy} onClick={runBackup}>
               Backup Al
             </button>
+            <button type="button" className="secondary-button" onClick={() => setModal('department')}>
+              + Bölüm
+            </button>
+            <button type="button" className="secondary-button" onClick={() => { setErrorText(''); setModal('session'); }}>
+              + Oturum
+            </button>
+            <button type="button" className="secondary-button" onClick={() => setModal('classroom')}>
+              + Salon
+            </button>
             <button type="button" className="secondary-button" onClick={() => setModal('course')}>
               + Ders
             </button>
             <button type="button" className="secondary-button" onClick={() => setModal('person')}>
               + Personel
-            </button>
-            <button type="button" className="secondary-button" onClick={() => setModal('room')}>
-              + Salon
             </button>
             <button type="button" className="primary-button" disabled={!courses.length} onClick={openExamModal}>
               + Sınav
@@ -292,7 +396,6 @@ function App() {
             {page === 'dashboard' && <Dashboard dashboard={dashboard} exams={exams} />}
             {page === 'courses' && <CourseList courses={courses} onAdd={() => setModal('course')} />}
             {page === 'personnel' && <PersonnelList supervisors={supervisors} onAdd={() => setModal('person')} />}
-            {page === 'rooms' && <RoomList rooms={capacities} onAdd={() => setModal('room')} />}
             {page === 'exams' && <ExamSchedule exams={exams} onAdd={openExamModal} disabled={!courses.length} />}
             {page === 'capacity' && <CapacityList capacities={capacities} />}
             {page === 'supervisors' && (
@@ -303,25 +406,117 @@ function App() {
         )}
       </main>
 
-      {modal === 'course' && (
-        <Modal title="Ders Kaydı Ekle" onClose={() => setModal(null)}>
-          <form className="form-grid" onSubmit={submitCourse}>
-            <label>Ders Kodu<input required value={courseForm.code} onChange={(event) => setCourseForm({ ...courseForm, code: event.target.value.toUpperCase() })} placeholder="BLM401" /></label>
-            <label>Ders Adı<input required value={courseForm.name} onChange={(event) => setCourseForm({ ...courseForm, name: event.target.value })} placeholder="Yapay Zeka" /></label>
-            <label>Bölüm<input required value={courseForm.department} onChange={(event) => setCourseForm({ ...courseForm, department: event.target.value })} placeholder="Bilgisayar Müh." /></label>
-            <label>Dönem<select value={courseForm.semester} onChange={(event) => setCourseForm({ ...courseForm, semester: event.target.value })}><option>Güz</option><option>Bahar</option><option>Yaz</option></select></label>
-            <label>Öğrenci Sayısı<input type="number" min="1" required value={courseForm.studentCount} onChange={(event) => setCourseForm({ ...courseForm, studentCount: event.target.value })} /></label>
+      {modal === 'department' && (
+        <Modal title="Bölüm Kaydı Ekle" onClose={() => setModal(null)}>
+          <form className="form-grid" onSubmit={submitDepartment}>
+            <label>Bölüm Adı<input required value={departmentForm.name} onChange={(event) => setDepartmentForm({ ...departmentForm, name: event.target.value })} placeholder="Örn: Bilgisayar Müh." /></label>
             <div className="form-actions"><button type="button" className="secondary-button" onClick={() => setModal(null)}>Vazgeç</button><button type="submit" className="primary-button" disabled={busy}>Kaydet</button></div>
           </form>
         </Modal>
       )}
 
-      {modal === 'room' && (
-        <Modal title="Salon Kaydı Ekle" onClose={() => setModal(null)}>
-          <form className="form-grid" onSubmit={submitRoom}>
-            <label>Salon Adı<input required value={roomForm.classroom} onChange={(event) => setRoomForm({ ...roomForm, classroom: event.target.value.toUpperCase() })} placeholder="D-204" /></label>
-            <label>Bina<input required value={roomForm.building} onChange={(event) => setRoomForm({ ...roomForm, building: event.target.value })} placeholder="D Blok" /></label>
-            <label>Kapasite<input type="number" min="1" required value={roomForm.capacity} onChange={(event) => setRoomForm({ ...roomForm, capacity: event.target.value })} /></label>
+      {modal === 'classroom' && (
+        <Modal title="Yeni Sınav Salonu Tanımla" onClose={() => setModal(null)}>
+          {errorText && (
+            <div className="error-box" style={{
+              backgroundColor: '#fde8e8',
+              color: '#e74c3c',
+              padding: '12px',
+              borderRadius: '4px',
+              marginBottom: '16px',
+              borderLeft: '4px solid #e74c3c',
+              fontSize: '14px',
+              fontWeight: '500'
+            }}>
+              {errorText}
+            </div>
+          )}
+
+          <form className="form-grid" onSubmit={submitClassroom}>
+            <label>
+              Salon / Derslik İsmi
+              <input
+                required
+                value={classroomForm.classroomName}
+                onChange={(event) => setClassroomForm({ ...classroomForm, classroomName: event.target.value.toUpperCase() })}
+                placeholder="Örn: A-101, Z-04, 102"
+              />
+            </label>
+            <label>
+              Bulunduğu Kat
+              <input
+                type="number"
+                required
+                value={classroomForm.floor}
+                onChange={(event) => setClassroomForm({ ...classroomForm, floor: Number(event.target.value) })}
+              />
+            </label>
+            <label>
+              Kapasite
+              <input
+                type="number"
+                min="1"
+                required
+                value={classroomForm.capacity}
+                onChange={(event) => setClassroomForm({ ...classroomForm, capacity: Number(event.target.value) })}
+              />
+            </label>
+            <div className="form-actions">
+              <button type="button" className="secondary-button" onClick={() => setModal(null)}>Vazgeç</button>
+              <button type="submit" className="primary-button" disabled={busy}>Kaydet</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {modal === 'session' && (
+        <Modal title="Sınav Oturumu Tanımla" onClose={() => setModal(null)}>
+          {errorText && <div className="error-box" style={{backgroundColor:'#fde8e8', color:'#e74c3c', padding:'10px', borderRadius:'4px', marginBottom:'12px', borderLeft:'4px solid #e74c3c', fontSize:'14px', fontWeight:'500'}}>{errorText}</div>}
+          <form className="form-grid" onSubmit={submitSession}>
+            <label>Oturum Adı/Tanımı<input required value={sessionForm.name} onChange={(event) => setSessionForm({ ...sessionForm, name: event.target.value })} placeholder="Örn: Oturum 1 veya Sabah Seansı" /></label>
+            <label>Başlangıç Saati<input type="time" required value={sessionForm.startTime} onChange={(event) => setSessionForm({ ...sessionForm, startTime: event.target.value })} /></label>
+            <label>Bitiş Saati<input type="time" required value={sessionForm.endTime} onChange={(event) => setSessionForm({ ...sessionForm, endTime: event.target.value })} /></label>
+            <div className="form-actions"><button type="button" className="secondary-button" onClick={() => setModal(null)}>Vazgeç</button><button type="submit" className="primary-button" disabled={busy}>Kaydet</button></div>
+          </form>
+        </Modal>
+      )}
+
+      {modal === 'course' && (
+        <Modal title="Ders Kaydı Ekle" onClose={() => setModal(null)}>
+          <form className="form-grid" onSubmit={submitCourse}>
+            <label>Ders Kodu<input required value={courseForm.code} onChange={(event) => setCourseForm({ ...courseForm, code: event.target.value.toUpperCase() })} placeholder="BLM401" /></label>
+            <label>Ders Adı<input required value={courseForm.name} onChange={(event) => setCourseForm({ ...courseForm, name: event.target.value })} placeholder="Yapay Zeka" /></label>
+           <label>
+             Bölüm
+             <select
+               required
+               value={courseForm.departmentId || ""}
+               onChange={(event) => setCourseForm({ ...courseForm, departmentId: Number(event.target.value) })}
+             >
+               <option value="">Bölüm Seçin</option>
+               {departments.map(d => (
+                 <option key={d.id} value={d.id}>
+                   {d.name}
+                 </option>
+               ))}
+             </select>
+           </label>
+            <label>
+              Dönem (Yarıyıl)
+              <select
+                required
+                value={courseForm.semester || ""}
+                onChange={(event) => setCourseForm({ ...courseForm, semester: Number(event.target.value) })}
+              >
+                <option value="">Dönem Seçin</option>
+                {[1, 2, 3, 4, 5, 6, 7, 8].map((num) => (
+                  <option key={num} value={num}>
+                    {num}. Yarıyıl
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>Öğrenci Sayısı<input type="number" min="1" required value={courseForm.studentCount} onChange={(event) => setCourseForm({ ...courseForm, studentCount: Number(event.target.value) })} /></label>
             <div className="form-actions"><button type="button" className="secondary-button" onClick={() => setModal(null)}>Vazgeç</button><button type="submit" className="primary-button" disabled={busy}>Kaydet</button></div>
           </form>
         </Modal>
@@ -332,8 +527,8 @@ function App() {
           <form className="form-grid" onSubmit={submitPerson}>
             <label>Ad Soyad<input required value={personForm.name} onChange={(event) => setPersonForm({ ...personForm, name: event.target.value })} placeholder="Dr. Ayşe Demir" /></label>
             <label>Unvan<select value={personForm.title} onChange={(event) => setPersonForm({ ...personForm, title: event.target.value })}><option>Prof. Dr.</option><option>Doç. Dr.</option><option>Dr.</option><option>Arş. Gör.</option><option>Öğr. Gör.</option></select></label>
-            <label>Bölüm<input required value={personForm.department} onChange={(event) => setPersonForm({ ...personForm, department: event.target.value })} placeholder="Matematik" /></label>
-            <label>Durum<select value={personForm.availability} onChange={(event) => setPersonForm({ ...personForm, availability: event.target.value })}><option>Uygun</option><option>Yoğun</option><option>İzinli</option></select></label>
+            <label>Bölüm<select required value={personForm.department} onChange={(event) => setPersonForm({ ...personForm, department: event.target.value })}><option value="">Bölüm Seçin</option>{departments.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}</select></label>
+            <label>Durum<select value={personForm.availability} onChange={(event) => setPersonForm({ ...personForm, availability: event.target.value })}><option>Campüste</option><option>Yoğun</option><option>İzinli</option></select></label>
             <div className="form-actions"><button type="button" className="secondary-button" onClick={() => setModal(null)}>Vazgeç</button><button type="submit" className="primary-button" disabled={busy}>Kaydet</button></div>
           </form>
         </Modal>
@@ -341,22 +536,138 @@ function App() {
 
       {modal === 'exam' && (
         <Modal title="Yeni Sınav Oluştur" onClose={() => setModal(null)}>
+          {errorText && <div className="error-box" style={{backgroundColor:'#fde8e8', color:'#e74c3c', padding:'10px', borderRadius:'4px', marginBottom:'12px', borderLeft:'4px solid #e74c3c', fontSize:'14px', fontWeight:'500'}}>{errorText}</div>}
           <form className="form-grid" onSubmit={submitExam}>
+
+            {/* 1. ADIM: DERS SEÇİMİ */}
             <label>
               Ders
               <select required value={examForm.courseId} onChange={(event) => {
                 const selected = courses.find((course) => String(course.id) === event.target.value)
-                setExamForm({ ...examForm, courseId: event.target.value, studentCount: selected?.studentCount ?? examForm.studentCount })
+                setExamForm({ ...examForm, courseId: event.target.value, studentCount: selected?.studentCount ?? examForm.studentCount, date: '', classroom: '', classroom2: '', sessionId: '' })
               }}>
                 <option value="">Ders seçin</option>
                 {courses.map((course) => <option key={course.id} value={course.id}>{course.code} - {course.name}</option>)}
               </select>
             </label>
-            <label>Tarih<input type="date" required value={examForm.date} onChange={(event) => setExamForm({ ...examForm, date: event.target.value })} /></label>
-            <label>Saat<input type="time" required value={examForm.time} onChange={(event) => setExamForm({ ...examForm, time: event.target.value })} /></label>
-            <label>Salon<select required value={examForm.classroom} onChange={(event) => setExamForm({ ...examForm, classroom: event.target.value })}>{capacities.map((room) => <option key={room.id}>{room.classroom}</option>)}</select></label>
-            <label>Öğrenci Sayısı<input type="number" min="1" required value={examForm.studentCount} onChange={(event) => setExamForm({ ...examForm, studentCount: event.target.value })} /></label>
-            <div className="form-actions"><button type="button" className="secondary-button" onClick={() => setModal(null)}>Vazgeç</button><button type="submit" className="primary-button" disabled={busy}>Kaydet</button></div>
+
+            {/* 2. ADIM: TARİH SEÇİMİ */}
+            <label>
+              Tarih
+              <input
+                type="date"
+                required
+                disabled={!examForm.courseId} // Ders seçilmeden tarih seçilemez
+                value={examForm.date}
+                onChange={(event) => setExamForm({ ...examForm, date: event.target.value, classroom: '', classroom2: '', sessionId: '' })}
+              />
+            </label>
+
+            {/* 3. ADIM: 1. SALON SEÇİMİ */}
+            <label style={{ opacity: !examForm.date ? 0.6 : 1 }}>
+              1. Salon
+              <select
+                required
+                disabled={!examForm.date} // Tarih seçilmeden salon seçilemez
+                value={examForm.classroom}
+                onChange={(event) => setExamForm({ ...examForm, classroom: event.target.value, classroom2: '', sessionId: '' })}
+              >
+                <option value="">Salon Seçin</option>
+                {capacities.map((room) => <option key={room.id} value={room.classroom}>{room.classroom} (Kap: {room.capacity})</option>)}
+              </select>
+            </label>
+
+
+            {/* 🔥 YENİ DİNAMİK ALAN: Eğer 1. salonun kapasitesi yetmiyorsa veya zaten 2. salon seçilmişse ekrana gelir */}
+            {((examForm.classroom && capacities.find(r => r.classroom === examForm.classroom)?.capacity < Number(examForm.studentCount)) || examForm.classroom2) && (
+              <label style={{ animation: 'fadeIn 0.2s ease-in-out' }}>
+                <span style={{ color: '#e67e22', fontWeight: '600' }}>2. Salon (Ek Kontenjan Gerekli)</span>
+                <select
+                  value={examForm.classroom2 || ''}
+                  onChange={(event) => setExamForm({ ...examForm, classroom2: event.target.value, sessionId: '' })}
+                >
+                  <option value="">Ek 2. Salon Seçin (Opsiyonel)</option>
+                  {capacities
+                    // 1. seçilen salonun listede tekrar çıkmasını engelliyoruz çakışma olmasın diye
+                    .filter(room => room.classroom !== examForm.classroom)
+                    .map((room) => <option key={room.id} value={room.classroom}>{room.classroom} (Kap: {room.capacity})</option>)
+                  }
+                </select>
+              </label>
+            )}
+
+            {showCapacityWarning && (
+              <div style={{color:'#d35400', backgroundColor:'#fff5e6', borderLeft:'3px solid #e67e22', padding:'6px 10px', fontSize:'12px', marginTop:'-6px'}}>
+                ⚠️ Seçilen salonların toplam kapasitesi ders kontenjanını hâlâ karşılamıyor!
+              </div>
+            )}
+
+            {/* 4. ADIM: OTURUM SEÇİMİ */}
+            <div className="form-group" style={{display:'flex', flexDirection:'column', gap:'6px', opacity: !examForm.classroom ? 0.6 : 1}}>
+              <label style={{fontWeight:'600', color:'#34495e', fontSize:'14px'}}>Sınav Oturumu</label>
+              <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(130px, 1fr))', gap:'10px'}}>
+                {sessions.length === 0 ? (
+                  <p style={{color:'#7f8c8d', fontSize:'13px'}}>Sisteme tanımlı aktif oturum bulunamadı.</p>
+                ) : (
+                  sessions.map((session) => {
+                    const isConflict = exams.some(exam =>
+                      exam.date === examForm.date &&
+                      String(exam.sessionId) === String(session.id) &&
+                      selectedCourseDetails &&
+                      exam.semester === selectedCourseDetails.semester &&
+                      exam.departmentId === selectedCourseDetails.departmentId
+                    );
+
+                    const isSelected = String(examForm.sessionId) === String(session.id);
+                    const isLocked = !examForm.classroom; // Salon seçilmediyse buton kilitli
+
+                    return (
+                      <div
+                        key={session.id}
+                        onClick={() => {
+                          if (!isConflict && !isLocked) {
+                            setExamForm({ ...examForm, sessionId: String(session.id) })
+                          }
+                        }}
+                        style={{
+                          border: isSelected ? '2px solid #3498db' : isConflict ? '2px solid #e74c3c' : '2px solid #bdc3c7',
+                          backgroundColor: isSelected ? '#ebf5fb' : isConflict ? '#fde8e8' : '#f8f9fa',
+                          color: isConflict ? '#c0392b' : '#2c3e50',
+                          padding: '10px',
+                          borderRadius: '6px',
+                          textAlign: 'center',
+                          cursor: isLocked ? 'not-allowed' : isConflict ? 'not-allowed' : 'pointer',
+                          opacity: isLocked ? 0.5 : isConflict ? 0.65 : 1,
+                          fontWeight: isSelected ? 'bold' : 'normal',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <span style={{fontSize:'13px', display:'block', marginBottom:'2px'}}>{session.name}</span>
+                        <span style={{fontSize:'14px', fontWeight:'bold', display:'block'}}>{session.startTime} - {session.endTime}</span>
+                        <span style={{
+                          fontSize:'10px',
+                          padding:'1px 5px',
+                          borderRadius:'10px',
+                          backgroundColor: isConflict ? '#e74c3c' : '#2ecc71',
+                          color:'white',
+                          fontWeight:'600',
+                          marginTop:'4px',
+                          display:'inline-block'
+                        }}>
+                          {isConflict ? 'Çakışma Var' : 'Müsait'}
+                        </span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+              <small style={{color:'#7f8c8d', fontSize:'11px', marginTop:'2px'}}>
+                {!examForm.classroom ? "Lütfen önce salon seçiniz." : "Aynı dönem zorunlu ders sınavları aynı saate atanamaz."}
+              </small>
+            </div>
+
+            <label>Öğrenci Sayısı<input type="number" min="1" required value={examForm.studentCount} onChange={(event) => setExamForm({ ...examForm, studentCount: Number(event.target.value) })} /></label>
+            <div className="form-actions"><button type="button" className="secondary-button" onClick={() => setModal(null)}>Vazgeç</button><button type="submit" className="primary-button" disabled={busy || !examForm.sessionId}>Kaydet</button></div>
           </form>
         </Modal>
       )}
@@ -380,8 +691,10 @@ function Dashboard({ dashboard = emptyDashboard, exams }) {
   const cards = [
     { label: 'Toplam Ders', value: dashboard.courseCount, note: 'Sisteme kayıtlı' },
     { label: 'Toplam Personel', value: dashboard.personnelCount, note: 'Gözetmen havuzu' },
-    { label: 'Toplam Salon', value: dashboard.roomCount, note: 'Sınav kapasitesi' },
     { label: 'Toplam Sınav', value: dashboard.examCount, note: 'Bu dönem planlanan' },
+    { label: 'Atanan Sınav', value: dashboard.assignedCount, note: 'Gözetmeni belli olanlar' },
+    { label: 'Salon Kullanımı', value: `${dashboard.roomUsage}%`, note: 'Sınıf doluluk oranı' },
+    { label: 'Atama Bekleyen', value: dashboard.pendingCount, note: 'Gözetmen atanacaklar', warning: dashboard.pendingCount > 0 },
   ]
 
   return (
@@ -415,7 +728,7 @@ function CourseList({ courses, onAdd }) {
     <article className="panel page-panel">
       <div className="panel-heading"><div><h2>Ders Kayıtları</h2><p>Sınav oluştururken seçilecek ders havuzu.</p></div><button className="primary-button" type="button" onClick={onAdd}>+ Ders Ekle</button></div>
       {!courses.length ? <EmptyState text="Henüz ders kaydı bulunmuyor." /> : (
-        <div className="table-wrapper"><table><thead><tr><th>Kod</th><th>Ders</th><th>Bölüm</th><th>Dönem</th><th>Öğrenci</th></tr></thead><tbody>{courses.map((course) => <tr key={course.id}><td><strong>{course.code}</strong></td><td>{course.name}</td><td>{course.department}</td><td>{course.semester}</td><td>{course.studentCount}</td></tr>)}</tbody></table></div>
+        <div className="table-wrapper"><table><thead><tr><th>Kod</th><th>Ders</th><th>Bölüm</th><th>Dönem</th><th>Öğrenci</th></tr></thead><tbody>{courses.map((course) => <tr key={course.id}><td><strong>{course.code}</strong></td><td>{course.name}</td><td>{course.department}</td><td>{course.semester}. Yarıyıl</td><td>{course.studentCount}</td></tr>)}</tbody></table></div>
       )}
     </article>
   )
@@ -426,15 +739,6 @@ function PersonnelList({ supervisors, onAdd }) {
     <article className="panel page-panel">
       <div className="panel-heading"><div><h2>Personel Kayıtları</h2><p>Gözetmen atamasında kullanılacak personel havuzu.</p></div><button className="primary-button" type="button" onClick={onAdd}>+ Personel Ekle</button></div>
       <PersonnelCards supervisors={supervisors} />
-    </article>
-  )
-}
-
-function RoomList({ rooms, onAdd }) {
-  return (
-    <article className="panel page-panel">
-      <div className="panel-heading"><div><h2>Salon Kayıtları</h2><p>Sınav oluştururken seçilecek salon havuzu.</p></div><button className="primary-button" type="button" onClick={onAdd}>+ Salon Ekle</button></div>
-      <CapacityList capacities={rooms} />
     </article>
   )
 }
@@ -458,7 +762,36 @@ function PersonnelCards({ supervisors }) {
 function ExamTable({ exams, compact = false }) {
   if (!exams.length) return <EmptyState text="Henüz sınav kaydı bulunmuyor." />
   return (
-    <div className="table-wrapper"><table><thead><tr><th>Ders</th><th>Tarih / Saat</th><th>Salon</th>{!compact && <th>Öğrenci</th>}<th>Gözetmen</th><th>Durum</th></tr></thead><tbody>{exams.map((exam) => <tr key={exam.id}><td><strong>{exam.courseCode}</strong><small>{exam.courseName}</small></td><td>{exam.date}<small>{exam.time}</small></td><td>{exam.classroom}</td>{!compact && <td>{exam.studentCount}</td>}<td>{exam.supervisor}</td><td><StatusBadge value={exam.status} /></td></tr>)}</tbody></table></div>
+    <div className="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>Ders</th>
+            <th>Tarih</th>
+            <th>Salon</th> {/* */}
+            {!compact && <th>Öğrenci</th>}
+            <th>Gözetmen</th>
+            <th>Durum</th>
+          </tr>
+        </thead>
+        <tbody>
+          {exams.map((exam) => (
+            <tr key={exam.id}>
+              <td><strong>{exam.courseCode}</strong><small>{exam.courseName}</small></td>
+              <td>{exam.date}</td>
+
+              {/* 🎯 BURAYI DEĞİŞTİRİYORSUN: */}
+              {/* Backend View'dan gelen salon ismini (classroomName) basar, eğer null ise hata vermemesi için eski değere (classroom) düşer */}
+              <td>{exam.classroomName || exam.classroom}</td>
+
+              {!compact && <td>{exam.studentCount}</td>}
+              <td>{exam.supervisor}</td>
+              <td><StatusBadge value={exam.status} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
