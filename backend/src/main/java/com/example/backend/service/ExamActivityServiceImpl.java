@@ -18,16 +18,19 @@ public class ExamActivityServiceImpl {
     private  final DashboardRepository dashboardRepository;
     private  final OturumRepository oturumRepository;
     private final ClassroomRepository classroomRepository;
+    private final SInavRepository sInavRepository;
 
     public ExamActivityServiceImpl(BolumRepository bolumRepository,  DersRepository dersRepository,
                                     DashboardRepository dashboardRepository,
                                    OturumRepository oturumRepository,
-                                   ClassroomRepository classroomRepository) {
+                                   ClassroomRepository classroomRepository,
+                                   SInavRepository sInavRepository) {
         this.bolumRepository = bolumRepository;
         this.dersRepository = dersRepository;
         this.dashboardRepository = dashboardRepository;
         this.oturumRepository = oturumRepository;
         this.classroomRepository = classroomRepository;
+        this.sInavRepository = sInavRepository;
     }
 
 
@@ -51,6 +54,18 @@ public class ExamActivityServiceImpl {
                 dto.getStudentCount(),
                 dto.getSemester(),
                 dto.getDepartmentId() // Ekleme yaparken SQL bizden ID bekliyor, isim değil!
+        );
+    }
+
+    @Transactional
+    public Integer addNewSinav(SinavRequestDTO dto) {
+        // Sıralama: date, sessionId, courseId, classroom, studentCount
+        return sInavRepository.spSinavEkle(
+                dto.getDate(),
+                dto.getSessionId(),
+                dto.getCourseId(),
+                dto.getClassroom(),
+                dto.getStudentCount()
         );
     }
 
@@ -138,5 +153,27 @@ public class ExamActivityServiceImpl {
         }
         return dtoList;
     }
+
+    @Transactional()
+    public List<SinavRequestDTO> getAllExams() {
+        // Repository'nizdeki findAll veya geliştirdiğiniz bir native query/procedure çağrısı
+        List<Object[]> rows = sInavRepository.spTumSinavlariGetir();
+        List<SinavRequestDTO> dtoList = new ArrayList<>();
+
+        for (Object[] row : rows) {
+            SinavRequestDTO dto = new SinavRequestDTO();
+            // SQL Server'dan gelen kolon sırasına göre map'leme yapıyoruz:
+            dto.setId(((Number) row[0]).intValue());
+            dto.setCourseId(((Number) row[1]).intValue());
+            dto.setDate((java.time.LocalDate) row[2]); // Tarih dönüşümü
+            dto.setSessionId(((Number) row[3]).intValue());      // 🔥 Çakışmayı çözecek olan kritik ID
+            dto.setClassroom(row[4].toString());
+            dto.setStudentCount(((Number) row[5]).intValue());
+
+            dtoList.add(dto);
+        }
+        return dtoList;
+    }
+
 
 }

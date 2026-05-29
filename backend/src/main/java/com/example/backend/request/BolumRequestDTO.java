@@ -5,9 +5,10 @@ import lombok.Setter;
 
 @Getter
 @Setter
+
 public class BolumRequestDTO {
     private String name;
-    private int id;
+    private Integer id;
 
 
     public BolumRequestDTO(Integer id, String name) {

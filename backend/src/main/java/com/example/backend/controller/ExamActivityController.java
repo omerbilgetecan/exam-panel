@@ -95,10 +95,15 @@ public class ExamActivityController {
     // 2. Sınav Programını Getiren Endpoint (GET /api/exams)
     @GetMapping("/exams")
     public ResponseEntity<List<?>> getAllExams() {
-        // TODO: Sınavları listelediğin servis metodunu bağla
-        // List<ExamResponseDTO> exams = examActivityService.getAllExams();
-        // return ResponseEntity.ok(exams);
-        return ResponseEntity.ok(java.util.Collections.emptyList());
+        // 🔥 Boş liste yerine servis üzerinden veritabanındaki tüm sınavları çekip dönüyoruz
+        List<?> allExams = examActivityService.getAllExams();
+        return ResponseEntity.ok(allExams);
+    }
+
+    @PostMapping("/exams")
+    public ResponseEntity<Integer> createSinav(@RequestBody SinavRequestDTO req) {
+        Integer id = examActivityService.addNewSinav(req);
+        return new ResponseEntity<>(id, HttpStatus.CREATED);
     }
 
     // 3. Log Kayıtlarını Getiren Endpoint (GET /api/logs)
@@ -109,4 +114,5 @@ public class ExamActivityController {
         // return ResponseEntity.ok(logs);
         return ResponseEntity.ok(java.util.Collections.emptyList());
     }
+
 }

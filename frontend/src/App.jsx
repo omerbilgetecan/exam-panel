@@ -523,65 +523,67 @@ function App() {
             </label>
             <label>Tarih<input type="date" required value={examForm.date} onChange={(event) => setExamForm({ ...examForm, date: event.target.value, sessionId: '' })} /></label>
 
-            <div className="form-group" style={{display:'flex', flexDirection:'column', gap:'6px'}}>
-              <label style={{fontWeight:'600', color:'#34495e', fontSize:'14px'}}>Sınav Oturumu</label>
-              <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(130px, 1fr))', gap:'10px'}}>
-                {sessions.length === 0 ? (
-                  <p style={{color:'#7f8c8d', fontSize:'13px'}}>Sisteme tanımlı aktif oturum bulunamadı.</p>
-                ) : (
-                  sessions.map((session) => {
-                    const isConflict = exams.some(exam =>
-                      exam.date === examForm.date &&
-                      String(exam.sessionId) === String(session.id) &&
-                      selectedCourseDetails &&
-                      exam.semester === selectedCourseDetails.semester &&
-                      exam.departmentId === selectedCourseDetails.departmentId
-                    );
+           <div className="form-group" style={{display:'flex', flexDirection:'column', gap:'6px'}}>
+             <label style={{fontWeight:'600', color:'#34495e', fontSize:'14px'}}>Sınav Oturumu</label>
+             <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(130px, 1fr))', gap:'10px'}}>
+               {sessions.length === 0 ? (
+                 <p style={{color:'#7f8c8d', fontSize:'13px'}}>Sisteme tanımlı aktif oturum bulunamadı.</p>
+               ) : (
+                 sessions.map((session) => {
+                   // 🔄 ESKİ HALİNE DÖNDÜRÜLEN ÇAKIŞMA MANTIĞI:
+                   // Dönem, bölüm ve tarih kontrollerini içeren orijinal akışa geri dönüldü.
+                   const isConflict = exams.some(exam =>
+                     exam.date === examForm.date &&
+                     String(exam.sessionId) === String(session.id) &&
+                     selectedCourseDetails &&
+                     exam.semester === selectedCourseDetails.semester &&
+                     exam.departmentId === selectedCourseDetails.departmentId
+                   );
 
-                    const isSelected = String(examForm.sessionId) === String(session.id);
+                   const isSelected = String(examForm.sessionId) === String(session.id);
 
-                    return (
-                      <div
-                        key={session.id}
-                        onClick={() => {
-                          if (!isConflict) {
-                            setExamForm({ ...examForm, sessionId: String(session.id) })
-                          }
-                        }}
-                        style={{
-                          border: isSelected ? '2px solid #3498db' : isConflict ? '2px solid #e74c3c' : '2px solid #bdc3c7',
-                          backgroundColor: isSelected ? '#ebf5fb' : isConflict ? '#fde8e8' : '#f8f9fa',
-                          color: isConflict ? '#c0392b' : '#2c3e50',
-                          padding: '10px',
-                          borderRadius: '6px',
-                          textAlign: 'center',
-                          cursor: isConflict ? 'not-allowed' : 'pointer',
-                          opacity: isConflict ? 0.65 : 1,
-                          fontWeight: isSelected ? 'bold' : 'normal',
-                          transition: 'all 0.15s ease'
-                        }}
-                      >
-                        <span style={{fontSize:'13px', display:'block', marginBottom:'2px'}}>{session.name}</span>
-                        <span style={{fontSize:'14px', fontWeight:'bold', display:'block'}}>{session.startTime} - {session.endTime}</span>
-                        <span style={{
-                          fontSize:'10px',
-                          padding:'1px 5px',
-                          borderRadius:'10px',
-                          backgroundColor: isConflict ? '#e74c3c' : '#2ecc71',
-                          color:'white',
-                          fontWeight:'600',
-                          marginTop:'4px',
-                          display:'inline-block'
-                        }}>
-                          {isConflict ? 'Çakışma Var' : 'Müsait'}
-                        </span>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-              <small style={{color:'#7f8c8d', fontSize:'11px', marginTop:'2px'}}>Aynı dönem zorunlu ders sınavları aynı saate atanamaz.</small>
-            </div>
+                   return (
+                     <div
+                       key={session.id}
+                       onClick={() => {
+                         if (!isConflict) {
+                           setExamForm({ ...examForm, sessionId: String(session.id) })
+                         }
+                       }}
+                       style={{
+                         border: isSelected ? '2px solid #3498db' : isConflict ? '2px solid #e74c3c' : '2px solid #bdc3c7',
+                         backgroundColor: isSelected ? '#ebf5fb' : isConflict ? '#fde8e8' : '#f8f9fa',
+                         color: isConflict ? '#c0392b' : '#2c3e50',
+                         padding: '10px',
+                         borderRadius: '6px',
+                         textAlign: 'center',
+                         cursor: isConflict ? 'not-allowed' : 'pointer',
+                         opacity: isConflict ? 0.65 : 1,
+                         fontWeight: isSelected ? 'bold' : 'normal',
+                         transition: 'all 0.15s ease'
+                       }}
+                     >
+                       <span style={{fontSize:'13px', display:'block', marginBottom:'2px'}}>{session.name}</span>
+                       <span style={{fontSize:'14px', fontWeight:'bold', display:'block'}}>{session.startTime} - {session.endTime}</span>
+                       <span style={{
+                         fontSize:'10px',
+                         padding:'1px 5px',
+                         borderRadius:'10px',
+                         backgroundColor: isConflict ? '#e74c3c' : '#2ecc71',
+                         color:'white',
+                         fontWeight:'600',
+                         marginTop:'4px',
+                         display:'inline-block'
+                       }}>
+                         {isConflict ? 'Çakışma Var' : 'Müsait'}
+                       </span>
+                     </div>
+                   );
+                 })
+               )}
+             </div>
+             <small style={{color:'#7f8c8d', fontSize:'11px', marginTop:'2px'}}>Aynı dönem zorunlu ders sınavları aynı saate atanamaz.</small>
+           </div>
 
             <label>Salon<select required value={examForm.classroom} onChange={(event) => setExamForm({ ...examForm, classroom: event.target.value })}><option value="">Salon Seçin</option>{capacities.map((room) => <option key={room.id} value={room.classroom}>{room.classroom} (Kap: {room.capacity})</option>)}</select></label>
             {showCapacityWarning && (
