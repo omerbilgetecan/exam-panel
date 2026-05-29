@@ -156,20 +156,24 @@ public class ExamActivityServiceImpl {
 
     @Transactional()
     public List<SinavRequestDTO> getAllExams() {
-        // Repository'nizdeki findAll veya geliştirdiğiniz bir native query/procedure çağrısı
         List<Object[]> rows = sInavRepository.spTumSinavlariGetir();
         List<SinavRequestDTO> dtoList = new ArrayList<>();
 
         for (Object[] row : rows) {
             SinavRequestDTO dto = new SinavRequestDTO();
-            // SQL Server'dan gelen kolon sırasına göre map'leme yapıyoruz:
+
             dto.setId(((Number) row[0]).intValue());
             dto.setCourseId(((Number) row[1]).intValue());
-            dto.setDate((java.time.LocalDate) row[2]); // Tarih dönüşümü
-            dto.setSessionId(((Number) row[3]).intValue());      // 🔥 Çakışmayı çözecek olan kritik ID
-            dto.setClassroom(row[4].toString());
+            dto.setDate((java.time.LocalDate) row[2]);
+            dto.setSessionId(((Number) row[3]).intValue());
+            dto.setClassroom(row[4] != null ? row[4].toString() : "");
             dto.setStudentCount(((Number) row[5]).intValue());
 
+            // 🎯 View katmanından DersID sayesinde otomatik çekilen dinamik alanlar:
+            dto.setCourseCode(row[6] != null ? row[6].toString() : "");
+            dto.setCourseName(row[7] != null ? row[7].toString() : "");
+
+            dto.setClassroomName(row[8] != null ? row[8].toString() : "Tanımsız Salon");
             dtoList.add(dto);
         }
         return dtoList;

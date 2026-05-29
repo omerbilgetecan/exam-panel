@@ -34,7 +34,7 @@ public class SInavRepository {
     @SuppressWarnings("unchecked")
     public List<Object[]> spTumSinavlariGetir() {
         return entityManager.createNativeQuery(
-                        "SELECT SinavID, DersID, Tarih, OturumID, DerslikID, OgrenciSayisi FROM dbo.Sinavlar")
+                        "SELECT SinavID, DersID, Tarih, OturumID, classroom, studentCount, courseCode, courseName, classroomName FROM dbo.vw_SinavDetaylari")
                 .getResultList();
     }
 

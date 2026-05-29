@@ -94,9 +94,8 @@ public class ExamActivityController {
 
     // 2. Sınav Programını Getiren Endpoint (GET /api/exams)
     @GetMapping("/exams")
-    public ResponseEntity<List<?>> getAllExams() {
-        // 🔥 Boş liste yerine servis üzerinden veritabanındaki tüm sınavları çekip dönüyoruz
-        List<?> allExams = examActivityService.getAllExams();
+    public ResponseEntity<List<SinavRequestDTO>> getAllExams() {
+        List<SinavRequestDTO> allExams = examActivityService.getAllExams();
         return ResponseEntity.ok(allExams);
     }
 

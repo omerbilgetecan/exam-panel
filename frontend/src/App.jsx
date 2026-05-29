@@ -12,8 +12,8 @@ const pages = [
   { id: 'logs', label: 'Log Kayıtları', icon: '≡' },
 ]
 const initialClassroomForm = { classroomName: '', capacity: 60, classroomType: 'Sınıf', floor: 0 };
+const initialExamForm = { courseId: '', date: '', sessionId: '', classroom: '', classroom2: '', studentCount: 30 }
 const emptyDashboard = { examCount: 0, assignedCount: 0, roomUsage: 0, pendingCount: 0, courseCount: 0, personnelCount: 0 }
-const initialExamForm = { courseId: '', date: '2026-06-05', sessionId: '', classroom: '', studentCount: 30 }
 const initialCourseForm = { code: '', name: '', departmentId: '', semester: 1, studentCount: 30 }
 const initialPersonForm = { name: '', department: '', title: 'Arş. Gör.', availability: 'Uygun' }
 const initialDepartmentForm = { name: '' }
@@ -154,7 +154,9 @@ function App() {
     setExamForm({
       ...initialExamForm,
       courseId: courses[0]?.id ? String(courses[0].id) : '',
+      date: '',
       classroom: capacities[0]?.classroom ?? '',
+      classroom2: '', // 2. salonu başlangıçta boşaltıyoruz
       studentCount: courses[0]?.studentCount ?? 30,
       sessionId: '',
     })
@@ -247,15 +249,30 @@ function App() {
 
     setBusy(true)
     try {
-      await api.createExam(examForm)
-      setModal(null)
-      setToast('Yeni sınav programa eklendi.')
-      await loadData()
-      setPage('exams')
+      // 1. ADIM: Her halükarda 1. Salon için sınav kaydını oluşturuyoruz
+      await api.createExam(examForm) //
+
+      // 2. ADIM: Eğer kullanıcı bir 2. Salon da seçtiyse, hemen arkasından 2. kaydı tetikliyoruz
+      if (examForm.classroom2) {
+        // 1. salon verilerini bozmamak için formun bir kopyasını oluşturup sadece salon adını değiştiriyoruz
+        const secondExamPayload = {
+          ...examForm,
+          classroom: examForm.classroom2 // Sadece derslik bilgisini 2. salon yapıyoruz
+        }
+
+        // Aynı istek yapısıyla 2. sınavı da sisteme gönderiyoruz
+        await api.createExam(secondExamPayload)
+      }
+
+      // Başarılı ise modali kapat, toast mesajı göster ve verileri yenile
+      setModal(null) //
+      setToast(examForm.classroom2 ? 'İki farklı salon için sınavlar başarıyla programa eklendi.' : 'Yeni sınav programa eklendi.') //
+      await loadData() //
+      setPage('exams') //
     } catch (error) {
-      setErrorText(error.message)
+      setErrorText(error.message) //
     } finally {
-      setBusy(false)
+      setBusy(false) //
     }
   }
 
@@ -293,11 +310,21 @@ function App() {
     return courses.find(c => String(c.id) === examForm.courseId)
   }, [courses, examForm.courseId])
 
-  const showCapacityWarning = useMemo(() => {
-    if (!examForm.classroom) return false
-    const room = capacities.find(r => r.classroom === examForm.classroom)
-    return room ? room.capacity < Number(examForm.studentCount) : false
-  }, [capacities, examForm.classroom, examForm.studentCount])
+const showCapacityWarning = useMemo(() => {
+  if (!examForm.classroom) return false;
+
+  // 1. Salonun kapasitesini bul
+  const room1 = capacities.find(r => r.classroom === examForm.classroom);
+  let totalCapacity = room1 ? room1.capacity : 0;
+
+  // Eğer 2. salon da seçildiyse onun da kapasitesini toplama ekle
+  if (examForm.classroom2) {
+    const room2 = capacities.find(r => r.classroom === examForm.classroom2);
+    totalCapacity += room2 ? room2.capacity : 0;
+  }
+
+  return totalCapacity < Number(examForm.studentCount);
+}, [capacities, examForm.classroom, examForm.classroom2, examForm.studentCount]);
 
   const title = pages.find((entry) => entry.id === page)?.label
 
@@ -511,88 +538,136 @@ function App() {
         <Modal title="Yeni Sınav Oluştur" onClose={() => setModal(null)}>
           {errorText && <div className="error-box" style={{backgroundColor:'#fde8e8', color:'#e74c3c', padding:'10px', borderRadius:'4px', marginBottom:'12px', borderLeft:'4px solid #e74c3c', fontSize:'14px', fontWeight:'500'}}>{errorText}</div>}
           <form className="form-grid" onSubmit={submitExam}>
+
+            {/* 1. ADIM: DERS SEÇİMİ */}
             <label>
               Ders
               <select required value={examForm.courseId} onChange={(event) => {
                 const selected = courses.find((course) => String(course.id) === event.target.value)
-                setExamForm({ ...examForm, courseId: event.target.value, studentCount: selected?.studentCount ?? examForm.studentCount, sessionId: '' })
+                setExamForm({ ...examForm, courseId: event.target.value, studentCount: selected?.studentCount ?? examForm.studentCount, date: '', classroom: '', classroom2: '', sessionId: '' })
               }}>
                 <option value="">Ders seçin</option>
                 {courses.map((course) => <option key={course.id} value={course.id}>{course.code} - {course.name}</option>)}
               </select>
             </label>
-            <label>Tarih<input type="date" required value={examForm.date} onChange={(event) => setExamForm({ ...examForm, date: event.target.value, sessionId: '' })} /></label>
 
-           <div className="form-group" style={{display:'flex', flexDirection:'column', gap:'6px'}}>
-             <label style={{fontWeight:'600', color:'#34495e', fontSize:'14px'}}>Sınav Oturumu</label>
-             <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(130px, 1fr))', gap:'10px'}}>
-               {sessions.length === 0 ? (
-                 <p style={{color:'#7f8c8d', fontSize:'13px'}}>Sisteme tanımlı aktif oturum bulunamadı.</p>
-               ) : (
-                 sessions.map((session) => {
-                   // 🔄 ESKİ HALİNE DÖNDÜRÜLEN ÇAKIŞMA MANTIĞI:
-                   // Dönem, bölüm ve tarih kontrollerini içeren orijinal akışa geri dönüldü.
-                   const isConflict = exams.some(exam =>
-                     exam.date === examForm.date &&
-                     String(exam.sessionId) === String(session.id) &&
-                     selectedCourseDetails &&
-                     exam.semester === selectedCourseDetails.semester &&
-                     exam.departmentId === selectedCourseDetails.departmentId
-                   );
+            {/* 2. ADIM: TARİH SEÇİMİ */}
+            <label>
+              Tarih
+              <input
+                type="date"
+                required
+                disabled={!examForm.courseId} // Ders seçilmeden tarih seçilemez
+                value={examForm.date}
+                onChange={(event) => setExamForm({ ...examForm, date: event.target.value, classroom: '', classroom2: '', sessionId: '' })}
+              />
+            </label>
 
-                   const isSelected = String(examForm.sessionId) === String(session.id);
+            {/* 3. ADIM: 1. SALON SEÇİMİ */}
+            <label style={{ opacity: !examForm.date ? 0.6 : 1 }}>
+              1. Salon
+              <select
+                required
+                disabled={!examForm.date} // Tarih seçilmeden salon seçilemez
+                value={examForm.classroom}
+                onChange={(event) => setExamForm({ ...examForm, classroom: event.target.value, classroom2: '', sessionId: '' })}
+              >
+                <option value="">Salon Seçin</option>
+                {capacities.map((room) => <option key={room.id} value={room.classroom}>{room.classroom} (Kap: {room.capacity})</option>)}
+              </select>
+            </label>
 
-                   return (
-                     <div
-                       key={session.id}
-                       onClick={() => {
-                         if (!isConflict) {
-                           setExamForm({ ...examForm, sessionId: String(session.id) })
-                         }
-                       }}
-                       style={{
-                         border: isSelected ? '2px solid #3498db' : isConflict ? '2px solid #e74c3c' : '2px solid #bdc3c7',
-                         backgroundColor: isSelected ? '#ebf5fb' : isConflict ? '#fde8e8' : '#f8f9fa',
-                         color: isConflict ? '#c0392b' : '#2c3e50',
-                         padding: '10px',
-                         borderRadius: '6px',
-                         textAlign: 'center',
-                         cursor: isConflict ? 'not-allowed' : 'pointer',
-                         opacity: isConflict ? 0.65 : 1,
-                         fontWeight: isSelected ? 'bold' : 'normal',
-                         transition: 'all 0.15s ease'
-                       }}
-                     >
-                       <span style={{fontSize:'13px', display:'block', marginBottom:'2px'}}>{session.name}</span>
-                       <span style={{fontSize:'14px', fontWeight:'bold', display:'block'}}>{session.startTime} - {session.endTime}</span>
-                       <span style={{
-                         fontSize:'10px',
-                         padding:'1px 5px',
-                         borderRadius:'10px',
-                         backgroundColor: isConflict ? '#e74c3c' : '#2ecc71',
-                         color:'white',
-                         fontWeight:'600',
-                         marginTop:'4px',
-                         display:'inline-block'
-                       }}>
-                         {isConflict ? 'Çakışma Var' : 'Müsait'}
-                       </span>
-                     </div>
-                   );
-                 })
-               )}
-             </div>
-             <small style={{color:'#7f8c8d', fontSize:'11px', marginTop:'2px'}}>Aynı dönem zorunlu ders sınavları aynı saate atanamaz.</small>
-           </div>
 
-            <label>Salon<select required value={examForm.classroom} onChange={(event) => setExamForm({ ...examForm, classroom: event.target.value })}><option value="">Salon Seçin</option>{capacities.map((room) => <option key={room.id} value={room.classroom}>{room.classroom} (Kap: {room.capacity})</option>)}</select></label>
+            {/* 🔥 YENİ DİNAMİK ALAN: Eğer 1. salonun kapasitesi yetmiyorsa veya zaten 2. salon seçilmişse ekrana gelir */}
+            {((examForm.classroom && capacities.find(r => r.classroom === examForm.classroom)?.capacity < Number(examForm.studentCount)) || examForm.classroom2) && (
+              <label style={{ animation: 'fadeIn 0.2s ease-in-out' }}>
+                <span style={{ color: '#e67e22', fontWeight: '600' }}>2. Salon (Ek Kontenjan Gerekli)</span>
+                <select
+                  value={examForm.classroom2 || ''}
+                  onChange={(event) => setExamForm({ ...examForm, classroom2: event.target.value, sessionId: '' })}
+                >
+                  <option value="">Ek 2. Salon Seçin (Opsiyonel)</option>
+                  {capacities
+                    // 1. seçilen salonun listede tekrar çıkmasını engelliyoruz çakışma olmasın diye
+                    .filter(room => room.classroom !== examForm.classroom)
+                    .map((room) => <option key={room.id} value={room.classroom}>{room.classroom} (Kap: {room.capacity})</option>)
+                  }
+                </select>
+              </label>
+            )}
+
             {showCapacityWarning && (
               <div style={{color:'#d35400', backgroundColor:'#fff5e6', borderLeft:'3px solid #e67e22', padding:'6px 10px', fontSize:'12px', marginTop:'-6px'}}>
-                ⚠️ Seçilen salonun kapasitesi ders kontenjanını karşılamıyor!
+                ⚠️ Seçilen salonların toplam kapasitesi ders kontenjanını hâlâ karşılamıyor!
               </div>
             )}
+
+            {/* 4. ADIM: OTURUM SEÇİMİ */}
+            <div className="form-group" style={{display:'flex', flexDirection:'column', gap:'6px', opacity: !examForm.classroom ? 0.6 : 1}}>
+              <label style={{fontWeight:'600', color:'#34495e', fontSize:'14px'}}>Sınav Oturumu</label>
+              <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(130px, 1fr))', gap:'10px'}}>
+                {sessions.length === 0 ? (
+                  <p style={{color:'#7f8c8d', fontSize:'13px'}}>Sisteme tanımlı aktif oturum bulunamadı.</p>
+                ) : (
+                  sessions.map((session) => {
+                    const isConflict = exams.some(exam =>
+                      exam.date === examForm.date &&
+                      String(exam.sessionId) === String(session.id) &&
+                      selectedCourseDetails &&
+                      exam.semester === selectedCourseDetails.semester &&
+                      exam.departmentId === selectedCourseDetails.departmentId
+                    );
+
+                    const isSelected = String(examForm.sessionId) === String(session.id);
+                    const isLocked = !examForm.classroom; // Salon seçilmediyse buton kilitli
+
+                    return (
+                      <div
+                        key={session.id}
+                        onClick={() => {
+                          if (!isConflict && !isLocked) {
+                            setExamForm({ ...examForm, sessionId: String(session.id) })
+                          }
+                        }}
+                        style={{
+                          border: isSelected ? '2px solid #3498db' : isConflict ? '2px solid #e74c3c' : '2px solid #bdc3c7',
+                          backgroundColor: isSelected ? '#ebf5fb' : isConflict ? '#fde8e8' : '#f8f9fa',
+                          color: isConflict ? '#c0392b' : '#2c3e50',
+                          padding: '10px',
+                          borderRadius: '6px',
+                          textAlign: 'center',
+                          cursor: isLocked ? 'not-allowed' : isConflict ? 'not-allowed' : 'pointer',
+                          opacity: isLocked ? 0.5 : isConflict ? 0.65 : 1,
+                          fontWeight: isSelected ? 'bold' : 'normal',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <span style={{fontSize:'13px', display:'block', marginBottom:'2px'}}>{session.name}</span>
+                        <span style={{fontSize:'14px', fontWeight:'bold', display:'block'}}>{session.startTime} - {session.endTime}</span>
+                        <span style={{
+                          fontSize:'10px',
+                          padding:'1px 5px',
+                          borderRadius:'10px',
+                          backgroundColor: isConflict ? '#e74c3c' : '#2ecc71',
+                          color:'white',
+                          fontWeight:'600',
+                          marginTop:'4px',
+                          display:'inline-block'
+                        }}>
+                          {isConflict ? 'Çakışma Var' : 'Müsait'}
+                        </span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+              <small style={{color:'#7f8c8d', fontSize:'11px', marginTop:'2px'}}>
+                {!examForm.classroom ? "Lütfen önce salon seçiniz." : "Aynı dönem zorunlu ders sınavları aynı saate atanamaz."}
+              </small>
+            </div>
+
             <label>Öğrenci Sayısı<input type="number" min="1" required value={examForm.studentCount} onChange={(event) => setExamForm({ ...examForm, studentCount: Number(event.target.value) })} /></label>
-            <div className="form-actions"><button type="button" className="secondary-button" onClick={() => setModal(null)}>Vazgeç</button><button type="submit" className="primary-button" disabled={busy}>Kaydet</button></div>
+            <div className="form-actions"><button type="button" className="secondary-button" onClick={() => setModal(null)}>Vazgeç</button><button type="submit" className="primary-button" disabled={busy || !examForm.sessionId}>Kaydet</button></div>
           </form>
         </Modal>
       )}
@@ -687,7 +762,36 @@ function PersonnelCards({ supervisors }) {
 function ExamTable({ exams, compact = false }) {
   if (!exams.length) return <EmptyState text="Henüz sınav kaydı bulunmuyor." />
   return (
-    <div className="table-wrapper"><table><thead><tr><th>Ders</th><th>Tarih</th><th>Salon</th>{!compact && <th>Öğrenci</th>}<th>Gözetmen</th><th>Durum</th></tr></thead><tbody>{exams.map((exam) => <tr key={exam.id}><td><strong>{exam.courseCode}</strong><small>{exam.courseName}</small></td><td>{exam.date}</td><td>{exam.classroom}</td>{!compact && <td>{exam.studentCount}</td>}<td>{exam.supervisor}</td><td><StatusBadge value={exam.status} /></td></tr>)}</tbody></table></div>
+    <div className="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>Ders</th>
+            <th>Tarih</th>
+            <th>Salon</th> {/* */}
+            {!compact && <th>Öğrenci</th>}
+            <th>Gözetmen</th>
+            <th>Durum</th>
+          </tr>
+        </thead>
+        <tbody>
+          {exams.map((exam) => (
+            <tr key={exam.id}>
+              <td><strong>{exam.courseCode}</strong><small>{exam.courseName}</small></td>
+              <td>{exam.date}</td>
+
+              {/* 🎯 BURAYI DEĞİŞTİRİYORSUN: */}
+              {/* Backend View'dan gelen salon ismini (classroomName) basar, eğer null ise hata vermemesi için eski değere (classroom) düşer */}
+              <td>{exam.classroomName || exam.classroom}</td>
+
+              {!compact && <td>{exam.studentCount}</td>}
+              <td>{exam.supervisor}</td>
+              <td><StatusBadge value={exam.status} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
