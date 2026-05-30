@@ -61,7 +61,7 @@ const logEvent = (action, detail, level = 'Başarılı') => {
   demoData.logs.unshift({ id: Date.now(), time: now, action, detail, level })
 }
 
-async function request(path, options, fallbackValue = null) {
+async function request(path, options) {
   try {
     const response = await fetch(`${API_BASE_URL}${path}`, {
       headers: { 'Content-Type': 'application/json' },
@@ -198,6 +198,24 @@ export const api = {
     return clone(demoData.logs)
   },
 
+  async getExamProgramReport() {
+    if (!readDemoMode()) return request('/reports/exam-program', {}, [])
+    await wait(120)
+    return demoData.exams.map((exam) => ({
+      courseCode: exam.courseCode,
+      courseName: exam.courseName,
+      department: demoData.courses.find((course) => course.id === exam.courseId)?.department ?? '',
+      semester: demoData.courses.find((course) => course.id === exam.courseId)?.semester ?? '',
+      date: exam.date,
+      session: exam.time,
+      classroom: exam.classroom,
+      studentCount: exam.studentCount,
+      capacity: demoData.capacities.find((room) => room.classroom === exam.classroom)?.capacity ?? 0,
+      supervisor: exam.supervisor,
+      status: exam.status,
+    }))
+  },
+
   async getSessions() {
     if (!readDemoMode()) return request('/sessions', {}, [])
     await wait()
@@ -300,7 +318,16 @@ export const api = {
   },
 
   async createSupervisor(person) {
-    if (!readDemoMode()) return request('/supervisors', { method: 'POST', body: JSON.stringify(person) }, {})
+    if (!readDemoMode()) {
+      const departmentId = Number(person.departmentId)
+      return request('/supervisors', {
+        method: 'POST',
+        body: JSON.stringify({
+          ...person,
+          departmentId: Number.isFinite(departmentId) && departmentId > 0 ? departmentId : null,
+        }),
+      }, {})
+    }
     await wait()
     const name = person.name.startsWith(person.title) ? person.name : `${person.title} ${person.name}`
     const newPerson = { ...person, id: Date.now(), name, examCount: 0 }
@@ -335,7 +362,7 @@ export const api = {
     if (!readDemoMode()) {
       return request('/assignments', {
         method: 'POST',
-        body: JSON.stringify({ examId, supervisorId }),
+        body: JSON.stringify({ examId: Number(examId), supervisorId: Number(supervisorId) }),
       }, {})
     }
 
@@ -356,13 +383,4 @@ export const api = {
     logEvent('Yedekleme tamamlandı', 'SQL Server backup procedure çalıştırıldı')
     return { message: 'Veritabanı yedeği başarıyla oluşturuldu.' }
   },
-
-  async getCoursesWithoutExam() {
-    if (!readDemoMode()) {
-      return request('/courses/no-exam', {}, []);
-    }
-    // Demo modu için normal dersleri dön
-    await wait();
-    return clone(demoData.courses || []);
-  }
 }
