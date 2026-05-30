@@ -77,12 +77,14 @@ public class ExamActivityController {
 
     @PostMapping("/supervisors/{id}/leave")
     public ResponseEntity<Void> createSupervisorLeave(@PathVariable Integer id, @RequestBody Map<String, String> req) {
-        examActivityService.addSupervisorLeave(
-                id,
-                LocalDate.parse(req.get("date")),
-                Integer.valueOf(req.get("sessionId")),
-                req.getOrDefault("reason", "İzinli")
-        );
+        LocalDate date = LocalDate.parse(req.get("date"));
+        String sessionId = req.get("sessionId");
+        String reason = req.getOrDefault("reason", "İzinli");
+        if ("ALL".equalsIgnoreCase(sessionId)) {
+            examActivityService.addSupervisorLeaveForDay(id, date, reason);
+        } else {
+            examActivityService.addSupervisorLeave(id, date, Integer.valueOf(sessionId), reason);
+        }
         return ResponseEntity.noContent().build();
     }
 

@@ -1,3 +1,5 @@
+import { seedData } from '../data/seedData'
+
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080/api'
 
 const wait = (duration = 220) =>
@@ -6,43 +8,78 @@ const wait = (duration = 220) =>
 const clone = (value) => JSON.parse(JSON.stringify(value))
 
 const readDemoMode = () => window.localStorage.getItem('exam-demo-mode') !== 'false'
+const asNumber = (value, fallback = 0) => {
+  const number = Number(value)
+  return Number.isFinite(number) ? number : fallback
+}
+const pick = (...values) => values.find((value) => value !== undefined && value !== null && value !== '')
+const buildSupervisorName = (person) => {
+  const explicitName = pick(person.name, person.fullName, person.personelAdi)
+  if (explicitName) return String(explicitName).trim()
+
+  const title = pick(person.title, person.unvan, '')
+  const firstName = pick(person.firstName, person.ad, '')
+  const lastName = pick(person.lastName, person.soyad, '')
+  return [title, firstName, lastName].filter(Boolean).join(' ').trim()
+}
+
+const normalizeDepartment = (department) => ({
+  id: asNumber(pick(department.id, department.departmentId, department.bolumId, department.bolumID)),
+  name: pick(department.name, department.department, department.bolumAdi, department.bolumAd, 'Tanımsız Bölüm'),
+})
+
+const normalizeCourse = (course) => ({
+  id: asNumber(pick(course.id, course.courseId, course.dersId, course.dersID)),
+  code: pick(course.code, course.courseCode, course.dersKodu, ''),
+  name: pick(course.name, course.courseName, course.dersAdi, 'Tanımsız Ders'),
+  studentCount: asNumber(pick(course.studentCount, course.ogrenciSayisi, course.capacity), 0),
+  semester: asNumber(pick(course.semester, course.yariyil), 0),
+  departmentId: asNumber(pick(course.departmentId, course.bolumId, course.bolumID), 0),
+  department: pick(course.department, course.departmentName, course.bolumAdi, 'Tanımsız Bölüm'),
+})
+
+const normalizeSupervisor = (person) => ({
+  id: asNumber(pick(person.id, person.supervisorId, person.personelId, person.personelID)),
+  title: pick(person.title, person.unvan, ''),
+  name: buildSupervisorName(person) || 'Tanımsız Personel',
+  firstName: pick(person.firstName, person.ad, ''),
+  lastName: pick(person.lastName, person.soyad, ''),
+  departmentId: asNumber(pick(person.departmentId, person.bolumId, person.bolumID), 0),
+  department: pick(person.department, person.departmentName, person.bolumAdi, 'Tanımsız Bölüm'),
+  examCount: asNumber(pick(person.examCount, person.sinavSayisi), 0),
+  availability: pick(person.availability, person.durum, 'Uygun'),
+})
 
 const initialData = {
-  departments: [
-    { id: 1, name: 'Bilgisayar Müh.' },
-    { id: 2, name: 'Matematik' },
-    { id: 3, name: 'Yazılım Müh.' }
-  ],
-  courses: [
-    { id: 1, code: 'BLM301', name: 'Veri Tabanı Yönetimi', department: 'Bilgisayar Müh.', semester: 'Bahar', studentCount: 42 },
-    { id: 2, code: 'BLM205', name: 'Web Programlama', department: 'Bilgisayar Müh.', semester: 'Bahar', studentCount: 34 },
-    { id: 3, code: 'MAT102', name: 'Lineer Cebir', department: 'Matematik', semester: 'Bahar', studentCount: 58 },
-    { id: 4, code: 'YAZ402', name: 'Yazılım Proje Yönetimi', department: 'Yazılım Müh.', semester: 'Bahar', studentCount: 26 },
-  ],
+  departments: seedData.departments,
+  courses: seedData.courses,
   sessions: [ // Demo modunda arayüzün boş kalmaması için varsayılan seanslar
-    { id: 1, name: 'Oturum 1', startTime: '09:30', endTime: '11:00' },
-    { id: 2, name: 'Oturum 2', startTime: '11:30', endTime: '13:00' },
-    { id: 3, name: 'Oturum 3', startTime: '14:00', endTime: '15:30' }
+    { id: 1, name: 'Sabah-1', startTime: '09:00', endTime: '10:00' },
+    { id: 2, name: 'Sabah-2', startTime: '10:30', endTime: '11:30' },
+    { id: 3, name: 'Öğle', startTime: '12:00', endTime: '13:00' },
+    { id: 4, name: 'Öğleden Sonra-1', startTime: '13:45', endTime: '14:45' },
+    { id: 5, name: 'Öğleden Sonra-2', startTime: '15:15', endTime: '16:30' }
   ],
-  exams: [
-    { id: 1, courseId: 1, courseCode: 'BLM301', courseName: 'Veri Tabanı Yönetimi', date: '2026-06-02', time: '09:30', classroom: 'A-201', studentCount: 42, supervisor: 'Dr. Selin Kaya', status: 'Planlandı' },
-    { id: 2, courseId: 2, courseCode: 'BLM205', courseName: 'Web Programlama', date: '2026-06-02', time: '13:30', classroom: 'LAB-3', studentCount: 34, supervisor: 'Atama Bekliyor', status: 'Atama Bekliyor' },
-    { id: 3, courseId: 3, courseCode: 'MAT102', courseName: 'Lineer Cebir', date: '2026-06-03', time: '10:00', classroom: 'B-104', studentCount: 58, supervisor: 'Doç. Cem Akın', status: 'Planlandı' },
-    { id: 4, courseId: 4, courseCode: 'YAZ402', courseName: 'Yazılım Proje Yönetimi', date: '2026-06-04', time: '14:00', classroom: 'C-301', studentCount: 26, supervisor: 'Arş. Gör. Ece Yılmaz', status: 'Planlandı' },
-  ],
+  exams: [],
   capacities: [
-    { id: 1, classroom: 'A-201', capacity: 48, assigned: 42, building: 'A Blok' },
-    { id: 2, classroom: 'LAB-3', capacity: 36, assigned: 34, building: 'Teknoloji Binası' },
-    { id: 3, classroom: 'B-104', capacity: 60, assigned: 58, building: 'B Blok' },
-    { id: 4, classroom: 'C-301', capacity: 45, assigned: 26, building: 'C Blok' },
-    { id: 5, classroom: 'Konferans-1', capacity: 110, assigned: 0, building: 'Rektörlük' },
+    { id: 1, classroom: '205', capacity: 36, assigned: 0, building: '2. Kat', floor: 2, type: 'Küçük Sınıf' },
+    { id: 2, classroom: '206', capacity: 36, assigned: 0, building: '2. Kat', floor: 2, type: 'Küçük Sınıf' },
+    { id: 3, classroom: '207', capacity: 36, assigned: 0, building: '2. Kat', floor: 2, type: 'Küçük Sınıf' },
+    { id: 4, classroom: '208', capacity: 36, assigned: 0, building: '2. Kat', floor: 2, type: 'Küçük Sınıf' },
+    { id: 5, classroom: '209', capacity: 60, assigned: 0, building: '2. Kat', floor: 2, type: 'Büyük Sınıf' },
+    { id: 6, classroom: '210', capacity: 60, assigned: 0, building: '2. Kat', floor: 2, type: 'Büyük Sınıf' },
+    { id: 7, classroom: '305', capacity: 36, assigned: 0, building: '3. Kat', floor: 3, type: 'Küçük Sınıf' },
+    { id: 8, classroom: '306', capacity: 36, assigned: 0, building: '3. Kat', floor: 3, type: 'Küçük Sınıf' },
+    { id: 9, classroom: '307', capacity: 36, assigned: 0, building: '3. Kat', floor: 3, type: 'Küçük Sınıf' },
+    { id: 10, classroom: '308', capacity: 36, assigned: 0, building: '3. Kat', floor: 3, type: 'Küçük Sınıf' },
+    { id: 11, classroom: '309', capacity: 40, assigned: 0, building: '3. Kat', floor: 3, type: 'Orta Sınıf' },
+    { id: 12, classroom: '310', capacity: 60, assigned: 0, building: '3. Kat', floor: 3, type: 'Büyük Sınıf' },
+    { id: 13, classroom: '311', capacity: 50, assigned: 0, building: '3. Kat', floor: 3, type: 'Orta Sınıf' },
+    { id: 14, classroom: '409', capacity: 60, assigned: 0, building: '4. Kat', floor: 4, type: 'Büyük Sınıf' },
+    { id: 15, classroom: '410', capacity: 60, assigned: 0, building: '4. Kat', floor: 4, type: 'Büyük Sınıf' },
   ],
-  supervisors: [
-    { id: 1, title: 'Dr.', name: 'Dr. Selin Kaya', department: 'Bilgisayar Müh.', examCount: 1, availability: 'Uygun' },
-    { id: 2, title: 'Doç. Dr.', name: 'Doç. Cem Akın', department: 'Matematik', examCount: 1, availability: 'Uygun' },
-    { id: 3, title: 'Arş. Gör.', name: 'Arş. Gör. Ece Yılmaz', department: 'Yazılım Müh.', examCount: 1, availability: 'Uygun' },
-    { id: 4, title: 'Arş. Gör.', name: 'Arş. Gör. Ömer Koç', department: 'Bilgisayar Müh.', examCount: 0, availability: 'Uygun' },
-  ],
+  supervisors: seedData.supervisors,
+  leaves: [],
   logs: [
     { id: 1, time: '27.05.2026 09:12', action: 'Sistem açıldı', detail: 'SQL Server bağlantısı hazır', level: 'Başarılı' },
     { id: 2, time: '27.05.2026 10:24', action: 'Ders ve sınav listelendi', detail: '4 ders, 4 sınav kaydı getirildi', level: 'Bilgi' },
@@ -59,6 +96,83 @@ const logEvent = (action, detail, level = 'Başarılı') => {
   }).format(new Date())
 
   demoData.logs.unshift({ id: Date.now(), time: now, action, detail, level })
+}
+
+const getExamCourse = (exam) => demoData.courses.find((course) => course.id === Number(exam.courseId))
+
+const getExamSessionId = (exam) => Number(exam.sessionId || demoData.sessions.find((session) => session.startTime === exam.time)?.id || 0)
+
+const getExamRooms = (exam) => String(exam.classroomName || exam.classroom || '')
+  .split(',')
+  .map((room) => room.trim())
+  .filter(Boolean)
+
+const chooseBestRooms = ({ date, sessionId, preferredRoom, studentCount }) => {
+  const busyRooms = new Set(
+    demoData.exams
+      .filter((exam) => exam.date === date && getExamSessionId(exam) === Number(sessionId))
+      .flatMap(getExamRooms),
+  )
+  const available = demoData.capacities.filter((room) => !busyRooms.has(room.classroom))
+  const selected = []
+
+  if (preferredRoom) {
+    const room = available.find((entry) => entry.classroom === preferredRoom)
+    if (!room) throw new Error(`SeÃ§ilen salon bu tarih ve oturumda dolu: ${preferredRoom}`)
+    selected.push(room)
+  }
+
+  let remaining = Number(studentCount) - selected.reduce((sum, room) => sum + Number(room.capacity), 0)
+  while (remaining > 0) {
+    const selectedIds = new Set(selected.map((room) => room.id))
+    const targetFloor = selected[0]?.floor
+    const sameFloorPool = available.filter((room) => !selectedIds.has(room.id) && targetFloor !== undefined && room.floor === targetFloor)
+    const pool = sameFloorPool.length ? sameFloorPool : available.filter((room) => !selectedIds.has(room.id))
+    if (!pool.length) break
+    pool.sort((a, b) => {
+      const aWaste = a.capacity >= remaining ? a.capacity - remaining : Number.MAX_SAFE_INTEGER - a.capacity
+      const bWaste = b.capacity >= remaining ? b.capacity - remaining : Number.MAX_SAFE_INTEGER - b.capacity
+      return aWaste - bWaste || b.capacity - a.capacity
+    })
+    selected.push(pool[0])
+    remaining -= Number(pool[0].capacity)
+  }
+
+  if (selected.reduce((sum, room) => sum + Number(room.capacity), 0) < Number(studentCount)) {
+    throw new Error('MÃ¼sait salonlarÄ±n toplam kapasitesi bu ders iÃ§in yetersiz.')
+  }
+  return selected
+}
+
+const wouldBreakConsecutiveRule = (sessionIds, newSessionId) => {
+  const ordered = [...new Set([...sessionIds.map(Number), Number(newSessionId)])].sort((a, b) => a - b)
+  let chain = 1
+  for (let index = 1; index < ordered.length; index += 1) {
+    if (ordered[index] === ordered[index - 1] + 1) {
+      chain += 1
+      if (chain > 3) return true
+    } else {
+      chain = 1
+    }
+  }
+  return false
+}
+
+const isSupervisorAvailable = (supervisor, date, sessionId) => {
+  const assignedToday = demoData.exams.filter((exam) => {
+    const names = Array.isArray(exam.supervisors) ? exam.supervisors : [exam.supervisor]
+    return names.includes(supervisor.name) && exam.date === date
+  })
+  const hasLeave = (demoData.leaves || []).some((leave) =>
+    Number(leave.supervisorId) === Number(supervisor.id) &&
+    leave.date === date &&
+    Number(leave.sessionId) === Number(sessionId)
+  )
+  if (assignedToday.some((exam) => getExamSessionId(exam) === Number(sessionId))) return false
+  if (new Set(assignedToday.map(getExamSessionId)).size >= 4) return false
+  if (wouldBreakConsecutiveRule(assignedToday.map(getExamSessionId), sessionId)) return false
+  if (hasLeave || ['İzinli', 'Danışmanlık Saati', 'Görevli'].includes(supervisor.availability)) return false
+  return true
 }
 
 async function request(path, options) {
@@ -96,7 +210,10 @@ export const api = {
   },
 
   async getDepartments() {
-    if (!readDemoMode()) return request('/departments', {}, [])
+    if (!readDemoMode()) {
+      const data = await request('/departments', {}, [])
+      return data.map(normalizeDepartment)
+    }
     await wait()
     return clone(demoData.departments || [])
   },
@@ -150,15 +267,7 @@ export const api = {
   async getCourses() {
     if (!readDemoMode()) {
       const data = await request('/courses', {}, []);
-      return data.map(course => ({
-        id: course.id,
-        code: course.code,
-        name: course.name,
-        studentCount: course.studentCount,
-        semester: course.semester,
-        departmentId: course.departmentId,
-        department: course.department
-      }));
+      return data.map(normalizeCourse);
     }
     await wait();
     return clone(demoData.courses);
@@ -186,7 +295,9 @@ export const api = {
         classroom: room.classroomName || "Tanımsız Salon", // backend: classroomName -> frontend: classroom
         capacity: room.capacity || 60,
         assigned: 0,
-        building: room.floor === 0 ? "Zemin Kat" : room.floor + ". Kat"
+        building: room.floor === 0 ? "Zemin Kat" : room.floor + ". Kat",
+        floor: Number(room.floor ?? 0),
+        type: room.classroomType || 'Sınıf',
       }));
     }
     await wait()
@@ -194,7 +305,10 @@ export const api = {
   },
 
   async getSupervisors() {
-    if (!readDemoMode()) return request('/supervisors', {}, [])
+    if (!readDemoMode()) {
+      const data = await request('/supervisors', {}, [])
+      return data.map(normalizeSupervisor)
+    }
     await wait()
     return clone(demoData.supervisors)
   },
@@ -208,19 +322,26 @@ export const api = {
   async getExamProgramReport() {
     if (!readDemoMode()) return request('/reports/exam-program', {}, [])
     await wait(120)
-    return demoData.exams.map((exam) => ({
-      courseCode: exam.courseCode,
-      courseName: exam.courseName,
-      department: demoData.courses.find((course) => course.id === exam.courseId)?.department ?? '',
-      semester: demoData.courses.find((course) => course.id === exam.courseId)?.semester ?? '',
-      date: exam.date,
-      session: exam.time,
-      classroom: exam.classroom,
-      studentCount: exam.studentCount,
-      capacity: demoData.capacities.find((room) => room.classroom === exam.classroom)?.capacity ?? 0,
-      supervisor: exam.supervisor,
-      status: exam.status,
-    }))
+    return demoData.exams.map((exam) => {
+      const roomNames = getExamRooms(exam)
+      const capacity = roomNames.reduce((sum, roomName) => {
+        const room = demoData.capacities.find((entry) => entry.classroom === roomName)
+        return sum + Number(room?.capacity || 0)
+      }, 0)
+      return {
+        courseCode: exam.courseCode,
+        courseName: exam.courseName,
+        department: demoData.courses.find((course) => course.id === exam.courseId)?.department ?? '',
+        semester: demoData.courses.find((course) => course.id === exam.courseId)?.semester ?? '',
+        date: exam.date,
+        session: exam.sessionName || exam.time || `Oturum ${exam.sessionId}`,
+        classroom: exam.classroom,
+        studentCount: exam.studentCount,
+        capacity,
+        supervisor: exam.supervisor,
+        status: exam.status,
+      }
+    })
   },
 
   async getSessions() {
@@ -290,7 +411,9 @@ export const api = {
       classroom: classroom.classroomName,
       capacity: Number(classroom.capacity),
       assigned: 0,
-      building: classroom.floor + ". Kat"
+      building: classroom.floor + ". Kat",
+      floor: Number(classroom.floor),
+      type: classroom.classroomType
     };
     if (!demoData.capacities) demoData.capacities = [];
     demoData.capacities.push(newRoom);
@@ -343,25 +466,85 @@ export const api = {
     return clone(newPerson)
   },
 
+  async createSupervisorLeave({ supervisorId, date, sessionId, reason }) {
+    if (!readDemoMode()) {
+      return request(`/supervisors/${Number(supervisorId)}/leave`, {
+        method: 'POST',
+        body: JSON.stringify({ date, sessionId: String(sessionId), reason }),
+      }, {})
+    }
+
+    await wait()
+    const supervisor = demoData.supervisors.find((person) => person.id === Number(supervisorId))
+    if (!supervisor) throw new Error('Personel bulunamadı.')
+    const sessionIds = sessionId === 'ALL'
+      ? (demoData.sessions || []).map((session) => Number(session.id))
+      : [Number(sessionId)]
+    const leaves = sessionIds.map((nextSessionId, index) => ({
+      id: Date.now() + index,
+      supervisorId: Number(supervisorId),
+      date,
+      sessionId: nextSessionId,
+      reason: reason || 'İzinli',
+    }))
+    demoData.leaves.unshift(...leaves)
+    supervisor.availability = reason || 'İzinli'
+    logEvent('Personel mazereti eklendi', `${supervisor.name} - ${date} / ${sessionId === 'ALL' ? 'Tüm gün' : `Oturum ${sessionId}`} (${reason || 'İzinli'})`)
+    return clone(leaves[0])
+  },
+
   async createExam(exam) {
     if (!readDemoMode()) return request('/exams', { method: 'POST', body: JSON.stringify(exam) }, {})
     await wait()
     const course = demoData.courses.find((entry) => entry.id === Number(exam.courseId))
-    if (!course) throw new Error('Önce geçerli bir ders seçmelisin.')
+    if (!course) throw new Error('Once gecerli bir ders secmelisin.')
+    const sessionId = Number(exam.sessionId)
+    const sameSemesterExams = demoData.exams.filter((entry) => {
+      const entryCourse = getExamCourse(entry)
+      return entry.date === exam.date &&
+        entryCourse?.departmentId === course.departmentId &&
+        Number(entryCourse?.semester) === Number(course.semester)
+    })
+    if (sameSemesterExams.some((entry) => getExamSessionId(entry) === sessionId)) {
+      throw new Error('Ayni bolum ve yariyildaki dersler ayni oturuma atanamaz.')
+    }
+    if (sameSemesterExams.length >= 2) {
+      throw new Error('Bir yariyila ait ayni gunde en fazla 2 sinav olabilir.')
+    }
+    if (sameSemesterExams.some((entry) => Math.abs(getExamSessionId(entry) - sessionId) < 2)) {
+      throw new Error('Ayni yariyilin ayni gundeki sinavlari arasinda en az bir oturum bosluk olmali.')
+    }
+    const rooms = chooseBestRooms({
+      date: exam.date,
+      sessionId,
+      preferredRoom: exam.classroom,
+      studentCount: course.studentCount,
+    })
     const newExam = {
       ...exam,
       id: Date.now(),
       courseId: course.id,
       courseCode: course.code,
       courseName: course.name,
-      studentCount: Number(exam.studentCount),
+      departmentId: course.departmentId,
+      department: course.department,
+      semester: course.semester,
+      sessionId,
+      classroom: rooms.map((room) => room.classroom).join(', '),
+      classroomName: rooms.map((room) => room.classroom).join(', '),
+      studentCount: Number(course.studentCount),
+      requiredSupervisorCount: rooms.length,
+      supervisors: [],
+      supervisorIds: [],
       supervisor: 'Atama Bekliyor',
       status: 'Atama Bekliyor',
     }
     demoData.exams.unshift(newExam)
-    const room = demoData.capacities.find((capacity) => capacity.classroom === exam.classroom)
-    if (room) room.assigned = Number(exam.studentCount)
-    logEvent('Sınav oluşturuldu', `${course.code} - ${exam.classroom}`)
+    rooms.forEach((selectedRoom) => {
+      const room = demoData.capacities.find((capacity) => capacity.classroom === selectedRoom.classroom)
+      if (room) room.assigned = Math.min(Number(room.capacity), Number(course.studentCount))
+    })
+    logEvent('Sinav olusturuldu', `${course.code} - ${newExam.classroom}`)
     return clone(newExam)
   },
 
@@ -375,12 +558,29 @@ export const api = {
 
     await wait()
     const exam = demoData.exams.find((entry) => entry.id === Number(examId))
-    const supervisor = demoData.supervisors.find((entry) => entry.id === Number(supervisorId))
-    if (!exam || !supervisor) throw new Error('Sınav veya gözetmen bulunamadı.')
-    exam.supervisor = supervisor.name
+    if (!exam) throw new Error('Sinav bulunamadi.')
+    const preferredSupervisor = demoData.supervisors.find((entry) => entry.id === Number(supervisorId))
+    const neededCount = Math.max(1, Number(exam.requiredSupervisorCount || getExamRooms(exam).length || 1))
+    const selectedSupervisors = []
+    const candidatePool = [preferredSupervisor, ...demoData.supervisors]
+      .filter(Boolean)
+      .filter((person, index, list) => list.findIndex((entry) => entry.id === person.id) === index)
+      .filter((person) => person.departmentId === exam.departmentId || String(person.department).includes('Ortak'))
+      .sort((a, b) => Number(a.examCount || 0) - Number(b.examCount || 0))
+    for (const person of candidatePool) {
+      if (selectedSupervisors.length >= neededCount) break
+      if (selectedSupervisors.some((selected) => selected.id === person.id)) continue
+      if (isSupervisorAvailable(person, exam.date, exam.sessionId)) selectedSupervisors.push(person)
+    }
+    if (selectedSupervisors.length < neededCount) throw new Error('Uygun gözetmen bulunamadı. Bölüm ve ortak havuz yetersiz.')
+    exam.supervisors = selectedSupervisors.map((person) => person.name)
+    exam.supervisorIds = selectedSupervisors.map((person) => person.id)
+    exam.supervisor = exam.supervisors.join(', ')
     exam.status = 'Planlandı'
-    supervisor.examCount += 1
-    logEvent('Gözetmen atandı', `${supervisor.name} -> ${exam.courseCode}`)
+    selectedSupervisors.forEach((person) => {
+      person.examCount = Number(person.examCount || 0) + 1
+    })
+    logEvent('Gözetmen atandı', `${exam.supervisor} -> ${exam.courseCode}`)
     return clone(exam)
   },
 
