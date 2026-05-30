@@ -164,6 +164,13 @@ export const api = {
     return clone(demoData.courses);
   },
 
+  async getCoursesWithoutExam() {
+    const allCourses = await api.getCourses();
+    const allExams = await api.getExams();
+    const examCourseIds = new Set(allExams.map((exam) => exam.courseId));
+    return allCourses.filter((course) => !examCourseIds.has(course.id));
+  },
+
   async getExams() {
     if (!readDemoMode()) return request('/exams', {}, [])
     await wait()
