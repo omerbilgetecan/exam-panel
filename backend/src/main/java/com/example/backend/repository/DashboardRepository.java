@@ -17,9 +17,9 @@ public class DashboardRepository {
                                 "(SELECT COUNT(*) FROM dbo.Dersler), " +
                                 "(SELECT COUNT(*) FROM dbo.Personel WHERE Aktif = 1), " +
                                 "(SELECT COUNT(*) FROM dbo.Sinavlar), " +
-                                "(SELECT COUNT(DISTINCT ss.SinavID) FROM dbo.Sinav_Salonlari ss INNER JOIN dbo.Gozetmen_Atamalari ga ON ss.SinavSalonID = ga.SinavSalonID), " +
-                                "(SELECT COUNT(*) FROM dbo.Sinavlar s WHERE NOT EXISTS (SELECT 1 FROM dbo.Sinav_Salonlari ss INNER JOIN dbo.Gozetmen_Atamalari ga ON ss.SinavSalonID = ga.SinavSalonID WHERE ss.SinavID = s.SinavID)), " +
-                                "(SELECT CASE WHEN SUM(Kapasite) > 0 THEN CAST((SELECT ISNULL(SUM(d.OgrenciSayisi), 0) FROM dbo.Sinavlar s INNER JOIN dbo.Dersler d ON s.DersID = d.DersID) * 100.0 / SUM(Kapasite) AS int) ELSE 0 END FROM dbo.Derslikler)")
+                                "(SELECT COUNT(*) FROM dbo.Sinavlar s WHERE EXISTS (SELECT 1 FROM dbo.Gozetmen_Atamalari ga WHERE ga.SinavID = s.SinavID)), " +
+                                "(SELECT COUNT(*) FROM dbo.Sinavlar s WHERE NOT EXISTS (SELECT 1 FROM dbo.Gozetmen_Atamalari ga WHERE ga.SinavID = s.SinavID)), " +
+                                "(SELECT CASE WHEN SUM(Kapasite) > 0 THEN CAST((SELECT ISNULL(SUM(ISNULL(s.OgrenciSayisi, d.OgrenciSayisi)), 0) FROM dbo.Sinavlar s INNER JOIN dbo.Dersler d ON s.DersID = d.DersID) * 100.0 / SUM(Kapasite) AS int) ELSE 0 END FROM dbo.Derslikler)")
                 .getSingleResult();
 
         DashboardRequestDTO dto = new DashboardRequestDTO();

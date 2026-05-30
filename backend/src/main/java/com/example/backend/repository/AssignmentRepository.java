@@ -17,7 +17,7 @@ public class AssignmentRepository {
     public record ExamSlot(Integer examId, LocalDate date, Integer sessionId, Integer departmentId) {
     }
 
-    public record Candidate(Integer personelId, Integer departmentId, String name, Integer dutyCount) {
+    public record Candidate(Integer personelId, Integer departmentId, String name, Integer dutyCount, Integer sortGroup) {
     }
 
     public ExamSlot findExamSlot(Integer examId) {
@@ -31,8 +31,10 @@ public class AssignmentRepository {
     @SuppressWarnings("unchecked")
     public List<Integer> unassignedExamSalonIds(Integer examId) {
         List<Number> rows = entityManager.createNativeQuery(
-                        "SELECT s.SinavID FROM dbo.Sinavlar s WHERE s.SinavID = :examId " +
-                                "AND NOT EXISTS (SELECT 1 FROM dbo.Gozetmen_Atamalari ga WHERE ga.SinavID = s.SinavID)")
+                        "SELECT target.SinavID FROM dbo.Sinavlar base " +
+                                "INNER JOIN dbo.Sinavlar target ON target.DersID = base.DersID AND target.Tarih = base.Tarih AND target.OturumID = base.OturumID " +
+                                "WHERE base.SinavID = :examId " +
+                                "AND NOT EXISTS (SELECT 1 FROM dbo.Gozetmen_Atamalari ga WHERE ga.SinavID = target.SinavID)")
                 .setParameter("examId", examId)
                 .getResultList();
         return rows.stream().map(Number::intValue).toList();
@@ -53,9 +55,9 @@ public class AssignmentRepository {
 
         List<Candidate> candidates = new ArrayList<>();
         for (Object[] row : rows) {
-            candidates.add(new Candidate(((Number) row[0]).intValue(), ((Number) row[1]).intValue(), row[2].toString(), ((Number) row[3]).intValue()));
+            candidates.add(new Candidate(((Number) row[0]).intValue(), ((Number) row[1]).intValue(), row[2].toString(), ((Number) row[3]).intValue(), ((Number) row[4]).intValue()));
         }
-        candidates.sort(Comparator.comparingInt(Candidate::dutyCount));
+        candidates.sort(Comparator.comparingInt(Candidate::sortGroup).thenComparingInt(Candidate::dutyCount));
         return candidates;
     }
 

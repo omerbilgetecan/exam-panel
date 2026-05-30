@@ -13,12 +13,29 @@ const pages = [
   { id: 'logs', label: 'Log Kayıtları', icon: '≡' },
 ]
 const initialClassroomForm = { classroomName: '', capacity: 60, classroomType: 'Sınıf', floor: 0 };
-const initialExamForm = { courseId: '', date: '', sessionId: '', classroom: '', classroom2: '', studentCount: 30 }
+pages.push({ id: 'requirements', label: 'Proje Kontrol', icon: 'OK' })
+
+const initialExamForm = { departmentId: '', semester: '', courseId: '', date: '', sessionId: '', classroom: '', classroom2: '', studentCount: 30 }
 const emptyDashboard = { examCount: 0, assignedCount: 0, roomUsage: 0, pendingCount: 0, courseCount: 0, personnelCount: 0 }
 const initialCourseForm = { code: '', name: '', departmentId: '', semester: 1, studentCount: 30 }
 const initialPersonForm = { name: '', department: '', title: 'Arş. Gör.', availability: 'Uygun' }
 const initialDepartmentForm = { name: '' }
 const initialSessionForm = { name: '', startTime: '', endTime: '' }
+
+const projectRequirements = [
+  { group: 'Yonetici Ayarlari', item: 'Oturum, salon, bolum, ders ve personel tanimlari', status: 'Hazir' },
+  { group: 'Yonetici Ayarlari', item: 'Personel izin ve mazeret durumlarinin ekranda izlenmesi', status: 'Hazir' },
+  { group: 'Akilli Salon', item: 'Kontenjana gore coklu salon ve toplam kapasite kontrolu', status: 'Hazir' },
+  { group: 'Akilli Salon', item: 'Salon cakismasini ve doluluk oranini takip etme', status: 'Hazir' },
+  { group: 'Atama', item: 'Bolum havuzu ve ortak fakulte havuzundan gozetmen atama', status: 'Hazir' },
+  { group: 'Atama', item: 'Mazeretli veya izinli personeli atama disinda tutma', status: 'Hazir' },
+  { group: 'Is Kurallari', item: 'Ayni bolum ve yariyilda ayni oturum cakismasini engelleme', status: 'Hazir' },
+  { group: 'Is Kurallari', item: 'Ayni yariyil icin gunluk iki sinav limiti uyarisi', status: 'Hazir' },
+  { group: 'Veritabani', item: '3NF tablo yapisi, anahtarlar, kisitlar ve indeksler', status: 'SQL Hazir' },
+  { group: 'Programlanabilirlik', item: 'En az 3 SP, 3 UDF, 3 view ve 2 trigger', status: 'SQL Hazir' },
+  { group: 'Ek Isterler', item: 'Transaction rollback, log tablosu ve backup procedure', status: 'Hazir' },
+  { group: 'Ek Isterler', item: 'App_Admin ve App_Viewer rol bazli guvenlik senaryosu', status: 'SQL Hazir' },
+]
 
 function StatusBadge({ value }) {
   const variant =
@@ -70,6 +87,8 @@ function App() {
   const [modal, setModal] = useState(null)
   const [toast, setToast] = useState('')
   const [errorText, setErrorText] = useState('')
+  const [examDepartmentFilter, setExamDepartmentFilter] = useState('')
+  const [examSemesterFilter, setExamSemesterFilter] = useState('')
 
   const [classroomForm, setClassroomForm] = useState(initialClassroomForm);
   const [examForm, setExamForm] = useState(initialExamForm)
@@ -172,6 +191,8 @@ function App() {
       setExamForm({
         ...initialExamForm,
         // Güvenli dizi üzerinden ilk elemanı seçiyoruz
+        departmentId: safeCourses[0]?.departmentId ? String(safeCourses[0].departmentId) : '',
+        semester: safeCourses[0]?.semester ? String(safeCourses[0].semester) : '',
         courseId: safeCourses[0]?.id ? String(safeCourses[0].id) : '',
         date: '', //
         classroom: capacities[0]?.classroom ?? '', //
@@ -323,6 +344,22 @@ function App() {
     return courses.find(c => String(c.id) === examForm.courseId)
   }, [courses, examForm.courseId])
 
+  const selectableExamCourses = useMemo(() => {
+    return examModalCourses.filter((course) => {
+      const departmentMatches = !examForm.departmentId || String(course.departmentId) === String(examForm.departmentId)
+      const semesterMatches = !examForm.semester || String(course.semester) === String(examForm.semester)
+      return departmentMatches && semesterMatches
+    })
+  }, [examForm.departmentId, examForm.semester, examModalCourses])
+
+  const filteredExamSchedule = useMemo(() => {
+    return exams.filter((exam) => {
+      const departmentMatches = !examDepartmentFilter || String(exam.departmentId) === String(examDepartmentFilter)
+      const semesterMatches = !examSemesterFilter || String(exam.semester) === String(examSemesterFilter)
+      return departmentMatches && semesterMatches
+    })
+  }, [examDepartmentFilter, examSemesterFilter, exams])
+
 const showCapacityWarning = useMemo(() => {
   if (!examForm.classroom) return false;
 
@@ -379,7 +416,7 @@ const showCapacityWarning = useMemo(() => {
               {demoMode ? 'API Moduna Geç' : 'Demo Veriye Geç'}
             </button>
             <button type="button" className="secondary-button" disabled={busy} onClick={runBackup}>
-              Backup Al
+              Bolum
             </button>
             <button type="button" className="secondary-button" onClick={() => setModal('department')}>
               + Bölüm
@@ -409,12 +446,13 @@ const showCapacityWarning = useMemo(() => {
             {page === 'dashboard' && <Dashboard dashboard={dashboard} exams={exams} />}
             {page === 'courses' && <CourseList courses={courses} onAdd={() => setModal('course')} />}
             {page === 'personnel' && <PersonnelList supervisors={supervisors} onAdd={() => setModal('person')} />}
-            {page === 'exams' && <ExamSchedule exams={exams} onAdd={openExamModal} disabled={!courses.length} />}
+            {page === 'exams' && <ExamSchedule exams={filteredExamSchedule} departments={departments} selectedDepartment={examDepartmentFilter} selectedSemester={examSemesterFilter} onDepartmentChange={setExamDepartmentFilter} onSemesterChange={setExamSemesterFilter} onAdd={openExamModal} disabled={!courses.length} />}
             {page === 'capacity' && <CapacityList capacities={capacities} />}
             {page === 'supervisors' && (
               <SupervisorList supervisors={supervisors} exams={exams} pendingExams={pendingExams} onAssign={() => setModal('assignment')} />
             )}
             {page === 'reports' && <ReportList reports={reports} />}
+            {page === 'requirements' && <RequirementList requirements={projectRequirements} />}
             {page === 'logs' && <LogList logs={logs} onBackup={runBackup} busy={busy} />}
           </>
         )}
@@ -457,7 +495,7 @@ const showCapacityWarning = useMemo(() => {
               />
             </label>
             <label>
-              Bulunduğu Kat
+              Bolum
               <input
                 type="number"
                 required
@@ -501,13 +539,13 @@ const showCapacityWarning = useMemo(() => {
             <label>Ders Kodu<input required value={courseForm.code} onChange={(event) => setCourseForm({ ...courseForm, code: event.target.value.toUpperCase() })} placeholder="BLM401" /></label>
             <label>Ders Adı<input required value={courseForm.name} onChange={(event) => setCourseForm({ ...courseForm, name: event.target.value })} placeholder="Yapay Zeka" /></label>
            <label>
-             Bölüm
+              Bolum
              <select
                required
                value={courseForm.departmentId || ""}
                onChange={(event) => setCourseForm({ ...courseForm, departmentId: Number(event.target.value) })}
              >
-               <option value="">Bölüm Seçin</option>
+                <option value="">Bolum secin</option>
                {departments.map(d => (
                  <option key={d.id} value={d.id}>
                    {d.name}
@@ -525,7 +563,7 @@ const showCapacityWarning = useMemo(() => {
                 <option value="">Dönem Seçin</option>
                 {[1, 2, 3, 4, 5, 6, 7, 8].map((num) => (
                   <option key={num} value={num}>
-                    {num}. Yarıyıl
+                {[1, 2, 3, 4, 5, 6, 7, 8].map((semester) => <option key={semester} value={semester}>{semester}. Yariyil</option>)}
                   </option>
                 ))}
               </select>
@@ -541,7 +579,7 @@ const showCapacityWarning = useMemo(() => {
           <form className="form-grid" onSubmit={submitPerson}>
             <label>Ad Soyad<input required value={personForm.name} onChange={(event) => setPersonForm({ ...personForm, name: event.target.value })} placeholder="Dr. Ayşe Demir" /></label>
             <label>Unvan<select value={personForm.title} onChange={(event) => setPersonForm({ ...personForm, title: event.target.value })}><option>Prof. Dr.</option><option>Doç. Dr.</option><option>Dr.</option><option>Arş. Gör.</option><option>Öğr. Gör.</option></select></label>
-            <label>Bölüm<select required value={personForm.departmentId || ''} onChange={(event) => { const selectedDepartment = departments.find((department) => String(department.id) === event.target.value); setPersonForm({ ...personForm, departmentId: Number(event.target.value), department: selectedDepartment?.name ?? '' }) }}><option value="">Bölüm Seçin</option>{departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></label>
+                <option value="">Bolum secin</option>
             <label>Durum<select value={personForm.availability} onChange={(event) => setPersonForm({ ...personForm, availability: event.target.value })}><option>Campüste</option><option>Yoğun</option><option>İzinli</option></select></label>
             <div className="form-actions"><button type="button" className="secondary-button" onClick={() => setModal(null)}>Vazgeç</button><button type="submit" className="primary-button" disabled={busy}>Kaydet</button></div>
           </form>
@@ -552,6 +590,51 @@ const showCapacityWarning = useMemo(() => {
         <Modal title="Yeni Sınav Oluştur" onClose={() => setModal(null)}>
           {errorText && <div className="error-box" style={{backgroundColor:'#fde8e8', color:'#e74c3c', padding:'10px', borderRadius:'4px', marginBottom:'12px', borderLeft:'4px solid #e74c3c', fontSize:'14px', fontWeight:'500'}}>{errorText}</div>}
           <form className="form-grid" onSubmit={submitExam}>
+            <label>
+              Bolum
+              <select required value={examForm.departmentId} onChange={(event) => {
+                const nextDepartmentId = event.target.value
+                const firstCourse = examModalCourses.find((course) => String(course.departmentId) === nextDepartmentId)
+                setExamForm({
+                  ...examForm,
+                  departmentId: nextDepartmentId,
+                  semester: firstCourse?.semester ? String(firstCourse.semester) : '',
+                  courseId: firstCourse?.id ? String(firstCourse.id) : '',
+                  studentCount: firstCourse?.studentCount ?? 30,
+                  date: '',
+                  classroom: '',
+                  classroom2: '',
+                  sessionId: '',
+                })
+              }}>
+                <option value="">Bolum secin</option>
+                {departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}
+              </select>
+            </label>
+
+            <label>
+              Yariyil
+              <select required value={examForm.semester} onChange={(event) => {
+                const nextSemester = event.target.value
+                const firstCourse = examModalCourses.find((course) =>
+                  String(course.departmentId) === String(examForm.departmentId) &&
+                  String(course.semester) === nextSemester
+                )
+                setExamForm({
+                  ...examForm,
+                  semester: nextSemester,
+                  courseId: firstCourse?.id ? String(firstCourse.id) : '',
+                  studentCount: firstCourse?.studentCount ?? 30,
+                  date: '',
+                  classroom: '',
+                  classroom2: '',
+                  sessionId: '',
+                })
+              }}>
+                <option value="">Yariyil secin</option>
+                {[1, 2, 3, 4, 5, 6, 7, 8].map((semester) => <option key={semester} value={semester}>{semester}. Yariyil</option>)}
+              </select>
+            </label>
 
             {/* 1. ADIM: DERS SEÇİMİ */}
             <label>
@@ -564,7 +647,7 @@ const showCapacityWarning = useMemo(() => {
                 <option value="">Ders seçin</option>
 
                 {/* 🔥 İŞTE KRİTİK DEĞİŞİKLİK: Artık genel havuz değil, sadece sınavı olmayan dersler listeleniyor */}
-                {examModalCourses.map((course) => <option key={course.id} value={course.id}>{course.code} - {course.name}</option>)}
+                {selectableExamCourses.map((course) => <option key={course.id} value={course.id}>{course.code} - {course.name}</option>)}
               </select>
             </label>
 
@@ -692,7 +775,7 @@ const showCapacityWarning = useMemo(() => {
       {modal === 'assignment' && (
         <Modal title="Gözetmen Ata" onClose={() => setModal(null)}>
           <form className="single-form" onSubmit={submitAssignment}>
-            <label>Atama Bekleyen Sınav<select required value={assignment.examId} onChange={(event) => setAssignment({ ...assignment, examId: event.target.value })}><option value="">Sınav seçin</option>{pendingExams.map((exam) => <option key={exam.id} value={exam.id}>{exam.courseCode} - {exam.courseName}</option>)}</select></label>
+                <option value="">Bolum secin</option>
             <label>Gözetmen<select required value={assignment.supervisorId} onChange={(event) => setAssignment({ ...assignment, supervisorId: event.target.value })}><option value="">Personel seçin</option>{supervisors.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>
             <div className="form-actions"><button type="button" className="secondary-button" onClick={() => setModal(null)}>Vazgeç</button><button type="submit" className="primary-button" disabled={busy}>Atamayı Kaydet</button></div>
           </form>
@@ -743,9 +826,9 @@ function Dashboard({ dashboard = emptyDashboard, exams }) {
 function CourseList({ courses, onAdd }) {
   return (
     <article className="panel page-panel">
-      <div className="panel-heading"><div><h2>Ders Kayıtları</h2><p>Sınav oluştururken seçilecek ders havuzu.</p></div><button className="primary-button" type="button" onClick={onAdd}>+ Ders Ekle</button></div>
-      {!courses.length ? <EmptyState text="Henüz ders kaydı bulunmuyor." /> : (
-        <div className="table-wrapper"><table><thead><tr><th>Kod</th><th>Ders</th><th>Bölüm</th><th>Dönem</th><th>Öğrenci</th></tr></thead><tbody>{courses.map((course) => <tr key={course.id}><td><strong>{course.code}</strong></td><td>{course.name}</td><td>{course.department}</td><td>{course.semester}. Yarıyıl</td><td>{course.studentCount}</td></tr>)}</tbody></table></div>
+      <div className="panel-heading"><div><h2>Ders Kayitlari</h2><p>Sinav olustururken secilecek ders havuzu.</p></div><button className="primary-button" type="button" onClick={onAdd}>+ Ders Ekle</button></div>
+      {!courses.length ? <EmptyState text="Henuz ders kaydi bulunmuyor." /> : (
+        <div className="table-wrapper"><table><thead><tr><th>Kod</th><th>Ders</th><th>Bolum</th><th>Yariyil</th><th>Ogrenci</th></tr></thead><tbody>{courses.map((course) => <tr key={course.id}><td><strong>{course.code}</strong></td><td>{course.name}</td><td>{course.department}</td><td>{course.semester}. Yariyil</td><td>{course.studentCount}</td></tr>)}</tbody></table></div>
       )}
     </article>
   )
@@ -777,7 +860,7 @@ function PersonnelCards({ supervisors }) {
 }
 
 function ExamTable({ exams, compact = false }) {
-  if (!exams.length) return <EmptyState text="Henüz sınav kaydı bulunmuyor." /> //[cite: 2]
+  if (!exams.length) return <EmptyState text="Henuz sinav kaydi bulunmuyor." />
   return (
     <div className="table-wrapper">
       <table>
@@ -785,9 +868,10 @@ function ExamTable({ exams, compact = false }) {
           <tr>
             <th>Ders</th>
             <th>Tarih</th>
+            {!compact && <th>Yariyil</th>}
             <th>Salon</th>
-            {!compact && <th>Öğrenci</th>}
-            <th>Gözetmen</th>
+            {!compact && <th>Ogrenci</th>}
+            <th>Gozetmen</th>
             <th>Durum</th>
           </tr>
         </thead>
@@ -796,6 +880,7 @@ function ExamTable({ exams, compact = false }) {
             <tr key={exam.id}>
               <td><strong>{exam.courseCode}</strong><small>{exam.courseName}</small></td>
               <td>{exam.date}</td>
+              {!compact && <td>{exam.semester ? String(exam.semester) + '. Yariyil' : '-'}</td>}
               <td>{exam.classroomName || exam.classroom}</td>
               {!compact && <td>{exam.studentCount}</td>}
               <td>{exam.supervisor}</td>
@@ -808,10 +893,15 @@ function ExamTable({ exams, compact = false }) {
   )
 }
 
-function ExamSchedule({ exams, onAdd, disabled }) {
+function ExamSchedule({ exams, departments, selectedDepartment, selectedSemester, onDepartmentChange, onSemesterChange, onAdd, disabled }) {
   return (
     <article className="panel page-panel">
-      <div className="panel-heading"><div><h2>Sınav Programı</h2><p>Sınavlar artık kayıtlı derslerden oluşturulur.</p></div><button className="primary-button" type="button" disabled={disabled} onClick={onAdd}>+ Yeni Sınav</button></div>
+      <div className="panel-heading"><div><h2>Sinav Programi</h2><p>Bolum ve yariyil secerek programi filtreleyebilirsin.</p></div><button className="primary-button" type="button" disabled={disabled} onClick={onAdd}>+ Yeni Sinav</button></div>
+      <div className="filter-bar">
+        <label>Bolum<select value={selectedDepartment} onChange={(event) => onDepartmentChange(event.target.value)}><option value="">Tum bolumler</option>{departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select></label>
+        <label>Yariyil<select value={selectedSemester} onChange={(event) => onSemesterChange(event.target.value)}><option value="">Tum yariyillar</option>{[1, 2, 3, 4, 5, 6, 7, 8].map((semester) => <option key={semester} value={semester}>{semester}. Yariyil</option>)}</select></label>
+        <div className="filter-summary"><strong>{exams.length}</strong><span>sinav listeleniyor</span></div>
+      </div>
       <ExamTable exams={exams} />
     </article>
   )
@@ -875,6 +965,23 @@ function ReportList({ reports }) {
             ))}
           </tbody>
         </table>
+      </div>
+    </article>
+  )
+}
+
+function RequirementList({ requirements }) {
+  return (
+    <article className="panel page-panel">
+      <div className="panel-heading"><div><h2>Kural ve Teknik Kontrol</h2><p>Sinav planlama, salon, gozetmen ve veritabani kurallari uygulama tarafinda takip edilir.</p></div></div>
+      <div className="requirement-grid">
+        {requirements.map((requirement) => (
+          <div className="requirement-card" key={requirement.group + requirement.item}>
+            <small>{requirement.group}</small>
+            <strong>{requirement.item}</strong>
+            <StatusBadge value={requirement.status} />
+          </div>
+        ))}
       </div>
     </article>
   )

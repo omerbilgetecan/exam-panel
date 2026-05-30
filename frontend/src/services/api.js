@@ -1,3 +1,5 @@
+import { seedData } from '../data/seedData'
+
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080/api'
 
 const wait = (duration = 220) =>
@@ -5,20 +7,52 @@ const wait = (duration = 220) =>
 
 const clone = (value) => JSON.parse(JSON.stringify(value))
 
-const readDemoMode = () => window.localStorage.getItem('exam-demo-mode') !== 'false'
+const readDemoMode = () => window.localStorage.getItem('exam-demo-mode') === 'true'
+const asNumber = (value, fallback = 0) => {
+  const number = Number(value)
+  return Number.isFinite(number) ? number : fallback
+}
+const pick = (...values) => values.find((value) => value !== undefined && value !== null && value !== '')
+const buildSupervisorName = (person) => {
+  const explicitName = pick(person.name, person.fullName, person.personelAdi)
+  if (explicitName) return String(explicitName).trim()
+
+  const title = pick(person.title, person.unvan, '')
+  const firstName = pick(person.firstName, person.ad, '')
+  const lastName = pick(person.lastName, person.soyad, '')
+  return [title, firstName, lastName].filter(Boolean).join(' ').trim()
+}
+
+const normalizeDepartment = (department) => ({
+  id: asNumber(pick(department.id, department.departmentId, department.bolumId, department.bolumID)),
+  name: pick(department.name, department.department, department.bolumAdi, department.bolumAd, 'Tanımsız Bölüm'),
+})
+
+const normalizeCourse = (course) => ({
+  id: asNumber(pick(course.id, course.courseId, course.dersId, course.dersID)),
+  code: pick(course.code, course.courseCode, course.dersKodu, ''),
+  name: pick(course.name, course.courseName, course.dersAdi, 'Tanımsız Ders'),
+  studentCount: asNumber(pick(course.studentCount, course.ogrenciSayisi, course.capacity), 0),
+  semester: asNumber(pick(course.semester, course.yariyil), 0),
+  departmentId: asNumber(pick(course.departmentId, course.bolumId, course.bolumID), 0),
+  department: pick(course.department, course.departmentName, course.bolumAdi, 'Tanımsız Bölüm'),
+})
+
+const normalizeSupervisor = (person) => ({
+  id: asNumber(pick(person.id, person.supervisorId, person.personelId, person.personelID)),
+  title: pick(person.title, person.unvan, ''),
+  name: buildSupervisorName(person) || 'Tanımsız Personel',
+  firstName: pick(person.firstName, person.ad, ''),
+  lastName: pick(person.lastName, person.soyad, ''),
+  departmentId: asNumber(pick(person.departmentId, person.bolumId, person.bolumID), 0),
+  department: pick(person.department, person.departmentName, person.bolumAdi, 'Tanımsız Bölüm'),
+  examCount: asNumber(pick(person.examCount, person.sinavSayisi), 0),
+  availability: pick(person.availability, person.durum, 'Uygun'),
+})
 
 const initialData = {
-  departments: [
-    { id: 1, name: 'Bilgisayar Müh.' },
-    { id: 2, name: 'Matematik' },
-    { id: 3, name: 'Yazılım Müh.' }
-  ],
-  courses: [
-    { id: 1, code: 'BLM301', name: 'Veri Tabanı Yönetimi', department: 'Bilgisayar Müh.', semester: 'Bahar', studentCount: 42 },
-    { id: 2, code: 'BLM205', name: 'Web Programlama', department: 'Bilgisayar Müh.', semester: 'Bahar', studentCount: 34 },
-    { id: 3, code: 'MAT102', name: 'Lineer Cebir', department: 'Matematik', semester: 'Bahar', studentCount: 58 },
-    { id: 4, code: 'YAZ402', name: 'Yazılım Proje Yönetimi', department: 'Yazılım Müh.', semester: 'Bahar', studentCount: 26 },
-  ],
+  departments: seedData.departments,
+  courses: seedData.courses,
   sessions: [ // Demo modunda arayüzün boş kalmaması için varsayılan seanslar
     { id: 1, name: 'Oturum 1', startTime: '09:30', endTime: '11:00' },
     { id: 2, name: 'Oturum 2', startTime: '11:30', endTime: '13:00' },
@@ -37,12 +71,7 @@ const initialData = {
     { id: 4, classroom: 'C-301', capacity: 45, assigned: 26, building: 'C Blok' },
     { id: 5, classroom: 'Konferans-1', capacity: 110, assigned: 0, building: 'Rektörlük' },
   ],
-  supervisors: [
-    { id: 1, title: 'Dr.', name: 'Dr. Selin Kaya', department: 'Bilgisayar Müh.', examCount: 1, availability: 'Uygun' },
-    { id: 2, title: 'Doç. Dr.', name: 'Doç. Cem Akın', department: 'Matematik', examCount: 1, availability: 'Uygun' },
-    { id: 3, title: 'Arş. Gör.', name: 'Arş. Gör. Ece Yılmaz', department: 'Yazılım Müh.', examCount: 1, availability: 'Uygun' },
-    { id: 4, title: 'Arş. Gör.', name: 'Arş. Gör. Ömer Koç', department: 'Bilgisayar Müh.', examCount: 0, availability: 'Uygun' },
-  ],
+  supervisors: seedData.supervisors,
   logs: [
     { id: 1, time: '27.05.2026 09:12', action: 'Sistem açıldı', detail: 'SQL Server bağlantısı hazır', level: 'Başarılı' },
     { id: 2, time: '27.05.2026 10:24', action: 'Ders ve sınav listelendi', detail: '4 ders, 4 sınav kaydı getirildi', level: 'Bilgi' },
@@ -59,6 +88,72 @@ const logEvent = (action, detail, level = 'Başarılı') => {
   }).format(new Date())
 
   demoData.logs.unshift({ id: Date.now(), time: now, action, detail, level })
+}
+
+const getExamCourse = (exam) => demoData.courses.find((course) => course.id === Number(exam.courseId))
+
+const getExamSessionId = (exam) => Number(exam.sessionId || demoData.sessions.find((session) => session.startTime === exam.time)?.id || 0)
+
+const getExamRooms = (exam) => String(exam.classroomName || exam.classroom || '')
+  .split(',')
+  .map((room) => room.trim())
+  .filter(Boolean)
+
+const chooseBestRooms = ({ date, sessionId, preferredRoom, studentCount }) => {
+  const busyRooms = new Set(
+    demoData.exams
+      .filter((exam) => exam.date === date && getExamSessionId(exam) === Number(sessionId))
+      .flatMap(getExamRooms),
+  )
+  const available = demoData.capacities.filter((room) => !busyRooms.has(room.classroom))
+  const selected = []
+
+  if (preferredRoom) {
+    const room = available.find((entry) => entry.classroom === preferredRoom)
+    if (!room) throw new Error(`SeÃ§ilen salon bu tarih ve oturumda dolu: ${preferredRoom}`)
+    selected.push(room)
+  }
+
+  let remaining = Number(studentCount) - selected.reduce((sum, room) => sum + Number(room.capacity), 0)
+  while (remaining > 0) {
+    const selectedIds = new Set(selected.map((room) => room.id))
+    const pool = available.filter((room) => !selectedIds.has(room.id))
+    if (!pool.length) break
+    pool.sort((a, b) => {
+      const aWaste = a.capacity >= remaining ? a.capacity - remaining : Number.MAX_SAFE_INTEGER - a.capacity
+      const bWaste = b.capacity >= remaining ? b.capacity - remaining : Number.MAX_SAFE_INTEGER - b.capacity
+      return aWaste - bWaste || b.capacity - a.capacity
+    })
+    selected.push(pool[0])
+    remaining -= Number(pool[0].capacity)
+  }
+
+  if (selected.reduce((sum, room) => sum + Number(room.capacity), 0) < Number(studentCount)) {
+    throw new Error('MÃ¼sait salonlarÄ±n toplam kapasitesi bu ders iÃ§in yetersiz.')
+  }
+  return selected
+}
+
+const wouldBreakConsecutiveRule = (sessionIds, newSessionId) => {
+  const ordered = [...new Set([...sessionIds.map(Number), Number(newSessionId)])].sort((a, b) => a - b)
+  let chain = 1
+  for (let index = 1; index < ordered.length; index += 1) {
+    if (ordered[index] === ordered[index - 1] + 1) {
+      chain += 1
+      if (chain > 3) return true
+    } else {
+      chain = 1
+    }
+  }
+  return false
+}
+
+const isSupervisorAvailable = (supervisor, date, sessionId) => {
+  const assignedToday = demoData.exams.filter((exam) => exam.supervisor === supervisor.name && exam.date === date)
+  if (assignedToday.some((exam) => getExamSessionId(exam) === Number(sessionId))) return false
+  if (assignedToday.length >= 4) return false
+  if (wouldBreakConsecutiveRule(assignedToday.map(getExamSessionId), sessionId)) return false
+  return supervisor.availability !== 'Ä°zinli' && supervisor.availability !== 'İzinli'
 }
 
 async function request(path, options) {
@@ -96,7 +191,10 @@ export const api = {
   },
 
   async getDepartments() {
-    if (!readDemoMode()) return request('/departments', {}, [])
+    if (!readDemoMode()) {
+      const data = await request('/departments', {}, [])
+      return data.map(normalizeDepartment)
+    }
     await wait()
     return clone(demoData.departments || [])
   },
@@ -150,15 +248,7 @@ export const api = {
   async getCourses() {
     if (!readDemoMode()) {
       const data = await request('/courses', {}, []);
-      return data.map(course => ({
-        id: course.id,
-        code: course.code,
-        name: course.name,
-        studentCount: course.studentCount,
-        semester: course.semester,
-        departmentId: course.departmentId,
-        department: course.department
-      }));
+      return data.map(normalizeCourse);
     }
     await wait();
     return clone(demoData.courses);
@@ -194,7 +284,10 @@ export const api = {
   },
 
   async getSupervisors() {
-    if (!readDemoMode()) return request('/supervisors', {}, [])
+    if (!readDemoMode()) {
+      const data = await request('/supervisors', {}, [])
+      return data.map(normalizeSupervisor)
+    }
     await wait()
     return clone(demoData.supervisors)
   },
@@ -347,21 +440,51 @@ export const api = {
     if (!readDemoMode()) return request('/exams', { method: 'POST', body: JSON.stringify(exam) }, {})
     await wait()
     const course = demoData.courses.find((entry) => entry.id === Number(exam.courseId))
-    if (!course) throw new Error('Önce geçerli bir ders seçmelisin.')
+    if (!course) throw new Error('Once gecerli bir ders secmelisin.')
+    const sessionId = Number(exam.sessionId)
+    const sameSemesterExams = demoData.exams.filter((entry) => {
+      const entryCourse = getExamCourse(entry)
+      return entry.date === exam.date &&
+        entryCourse?.departmentId === course.departmentId &&
+        Number(entryCourse?.semester) === Number(course.semester)
+    })
+    if (sameSemesterExams.some((entry) => getExamSessionId(entry) === sessionId)) {
+      throw new Error('Ayni bolum ve yariyildaki dersler ayni oturuma atanamaz.')
+    }
+    if (sameSemesterExams.length >= 2) {
+      throw new Error('Bir yariyila ait ayni gunde en fazla 2 sinav olabilir.')
+    }
+    if (sameSemesterExams.some((entry) => Math.abs(getExamSessionId(entry) - sessionId) < 2)) {
+      throw new Error('Ayni yariyilin ayni gundeki sinavlari arasinda en az bir oturum bosluk olmali.')
+    }
+    const rooms = chooseBestRooms({
+      date: exam.date,
+      sessionId,
+      preferredRoom: exam.classroom,
+      studentCount: course.studentCount,
+    })
     const newExam = {
       ...exam,
       id: Date.now(),
       courseId: course.id,
       courseCode: course.code,
       courseName: course.name,
-      studentCount: Number(exam.studentCount),
+      departmentId: course.departmentId,
+      department: course.department,
+      semester: course.semester,
+      sessionId,
+      classroom: rooms.map((room) => room.classroom).join(', '),
+      classroomName: rooms.map((room) => room.classroom).join(', '),
+      studentCount: Number(course.studentCount),
       supervisor: 'Atama Bekliyor',
       status: 'Atama Bekliyor',
     }
     demoData.exams.unshift(newExam)
-    const room = demoData.capacities.find((capacity) => capacity.classroom === exam.classroom)
-    if (room) room.assigned = Number(exam.studentCount)
-    logEvent('Sınav oluşturuldu', `${course.code} - ${exam.classroom}`)
+    rooms.forEach((selectedRoom) => {
+      const room = demoData.capacities.find((capacity) => capacity.classroom === selectedRoom.classroom)
+      if (room) room.assigned = Math.min(Number(room.capacity), Number(course.studentCount))
+    })
+    logEvent('Sinav olusturuldu', `${course.code} - ${newExam.classroom}`)
     return clone(newExam)
   },
 
@@ -375,12 +498,19 @@ export const api = {
 
     await wait()
     const exam = demoData.exams.find((entry) => entry.id === Number(examId))
-    const supervisor = demoData.supervisors.find((entry) => entry.id === Number(supervisorId))
-    if (!exam || !supervisor) throw new Error('Sınav veya gözetmen bulunamadı.')
-    exam.supervisor = supervisor.name
-    exam.status = 'Planlandı'
-    supervisor.examCount += 1
-    logEvent('Gözetmen atandı', `${supervisor.name} -> ${exam.courseCode}`)
+    if (!exam) throw new Error('Sinav bulunamadi.')
+    const preferredSupervisor = demoData.supervisors.find((entry) => entry.id === Number(supervisorId))
+    const selectedSupervisor = [preferredSupervisor, ...demoData.supervisors]
+      .filter(Boolean)
+      .filter((person, index, list) => list.findIndex((entry) => entry.id === person.id) === index)
+      .filter((person) => person.departmentId === exam.departmentId || String(person.department).includes('Ortak'))
+      .sort((a, b) => Number(a.examCount || 0) - Number(b.examCount || 0))
+      .find((person) => isSupervisorAvailable(person, exam.date, exam.sessionId))
+    if (!selectedSupervisor) throw new Error('Uygun gozetmen bulunamadi. Bolum ve ortak havuz yetersiz.')
+    exam.supervisor = selectedSupervisor.name
+    exam.status = 'Planlandi'
+    selectedSupervisor.examCount = Number(selectedSupervisor.examCount || 0) + 1
+    logEvent('Gozetmen atandi', `${selectedSupervisor.name} -> ${exam.courseCode}`)
     return clone(exam)
   },
 
