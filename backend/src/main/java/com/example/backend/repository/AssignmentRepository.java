@@ -81,7 +81,7 @@ public class AssignmentRepository {
         if (leave.intValue() > 0) return false;
 
         Number dayCount = (Number) entityManager.createNativeQuery(
-                        "SELECT COUNT(*) FROM dbo.Gozetmen_Atamalari ga " +
+                        "SELECT COUNT(DISTINCT s.OturumID) FROM dbo.Gozetmen_Atamalari ga " +
                                 "INNER JOIN dbo.Sinavlar s ON ga.SinavID = s.SinavID " +
                                 "WHERE ga.PersonelID = :personelId AND s.Tarih = :date")
                 .setParameter("personelId", personelId)

@@ -225,6 +225,15 @@ public class ExamActivityServiceImpl {
     }
 
     @Transactional
+    public void addSupervisorLeaveForDay(Integer supervisorId, LocalDate date, String reason) {
+        List<OturumRequestDTO> sessions = getAllSessions();
+        for (OturumRequestDTO session : sessions) {
+            supervisorRepository.addLeave(supervisorId, date, session.getId(), reason);
+        }
+        logRepository.log("Personel tam gün mazereti eklendi", supervisorId + " / " + date, "Başarılı");
+    }
+
+    @Transactional
     public void assignSupervisor(AssignmentRequestDTO dto) {
         AssignmentRepository.ExamSlot slot = assignmentRepository.findExamSlot(dto.getExamId());
         List<Integer> examIds = assignmentRepository.unassignedExamSalonIds(dto.getExamId());

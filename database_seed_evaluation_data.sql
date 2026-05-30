@@ -17,6 +17,11 @@ IF NOT EXISTS (SELECT 1 FROM dbo.Derslikler WHERE DerslikAdi = N'210') INSERT IN
 IF NOT EXISTS (SELECT 1 FROM dbo.Derslikler WHERE DerslikAdi = N'310') INSERT INTO dbo.Derslikler (DerslikAdi, Kapasite, DerslikTipi, Kat, Aktif) VALUES (N'310', 60, N'Sinif', 3, 1);
 IF NOT EXISTS (SELECT 1 FROM dbo.Derslikler WHERE DerslikAdi = N'409') INSERT INTO dbo.Derslikler (DerslikAdi, Kapasite, DerslikTipi, Kat, Aktif) VALUES (N'409', 60, N'Sinif', 4, 1);
 IF NOT EXISTS (SELECT 1 FROM dbo.Derslikler WHERE DerslikAdi = N'410') INSERT INTO dbo.Derslikler (DerslikAdi, Kapasite, DerslikTipi, Kat, Aktif) VALUES (N'410', 60, N'Sinif', 4, 1);
+UPDATE dbo.Derslikler SET Kapasite = 36, DerslikTipi = N'Kucuk Sinif', Aktif = 1 WHERE DerslikAdi IN (N'205', N'206', N'207', N'208', N'305', N'306', N'307', N'308');
+UPDATE dbo.Derslikler SET Kapasite = 40, DerslikTipi = N'Orta Sinif', Aktif = 1 WHERE DerslikAdi = N'309';
+UPDATE dbo.Derslikler SET Kapasite = 50, DerslikTipi = N'Orta Sinif', Aktif = 1 WHERE DerslikAdi = N'311';
+UPDATE dbo.Derslikler SET Kapasite = 60, DerslikTipi = N'Buyuk Sinif', Aktif = 1 WHERE DerslikAdi IN (N'209', N'210', N'310', N'409', N'410');
+UPDATE dbo.Derslikler SET Aktif = 0 WHERE DerslikAdi NOT IN (N'205', N'206', N'207', N'208', N'305', N'306', N'307', N'308', N'309', N'311', N'209', N'210', N'310', N'409', N'410');
 
 -- Oturumlar
 IF NOT EXISTS (SELECT 1 FROM dbo.Oturumlar WHERE OturumAdi = N'Sabah-1') INSERT INTO dbo.Oturumlar (OturumAdi, BaslangicSaat, BitisSaat) VALUES (N'Sabah-1', '09:00', '10:00');
@@ -24,6 +29,11 @@ IF NOT EXISTS (SELECT 1 FROM dbo.Oturumlar WHERE OturumAdi = N'Sabah-2') INSERT 
 IF NOT EXISTS (SELECT 1 FROM dbo.Oturumlar WHERE OturumAdi = N'Öğle') INSERT INTO dbo.Oturumlar (OturumAdi, BaslangicSaat, BitisSaat) VALUES (N'Öğle', '12:00', '13:00');
 IF NOT EXISTS (SELECT 1 FROM dbo.Oturumlar WHERE OturumAdi = N'Öğleden Sonra-1') INSERT INTO dbo.Oturumlar (OturumAdi, BaslangicSaat, BitisSaat) VALUES (N'Öğleden Sonra-1', '13:45', '14:45');
 IF NOT EXISTS (SELECT 1 FROM dbo.Oturumlar WHERE OturumAdi = N'Öğleden Sonra-2') INSERT INTO dbo.Oturumlar (OturumAdi, BaslangicSaat, BitisSaat) VALUES (N'Öğleden Sonra-2', '15:15', '16:30');
+UPDATE dbo.Oturumlar SET BaslangicSaat = '09:00', BitisSaat = '10:00' WHERE OturumAdi = N'Sabah-1';
+UPDATE dbo.Oturumlar SET BaslangicSaat = '10:30', BitisSaat = '11:30' WHERE OturumAdi = N'Sabah-2';
+UPDATE dbo.Oturumlar SET BaslangicSaat = '12:00', BitisSaat = '13:00' WHERE OturumAdi = N'Öğle';
+UPDATE dbo.Oturumlar SET BaslangicSaat = '13:45', BitisSaat = '14:45' WHERE OturumAdi = N'Öğleden Sonra-1';
+UPDATE dbo.Oturumlar SET BaslangicSaat = '15:15', BitisSaat = '16:30' WHERE OturumAdi = N'Öğleden Sonra-2';
 
 -- Bolumler
 IF NOT EXISTS (SELECT 1 FROM dbo.Bolumler WHERE BolumAdi = N'Yazılım Mühendisliği') INSERT INTO dbo.Bolumler (BolumAdi) VALUES (N'Yazılım Mühendisliği');
