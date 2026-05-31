@@ -1725,37 +1725,99 @@ function SupervisorList({ supervisors, exams, pendingExams, onAssign }) {
 }
 
 function ReportList({ reports }) {
-  if (!reports.length) return <EmptyState text="Henüz raporlanacak sınav kaydı bulunmuyor." />
+  if (!reports.length) {
+    return <EmptyState text="Henüz raporlanacak sınav kaydı bulunmuyor." />
+  }
+
+  const getSupervisorText = (exam) => {
+    if (Array.isArray(exam.supervisors) && exam.supervisors.length > 0) {
+      return exam.supervisors.join(', ')
+    }
+
+    if (exam.supervisor && exam.supervisor !== '-') {
+      return exam.supervisor
+    }
+
+    return 'Atama Bekliyor'
+  }
+
+  const sessionOrder = [
+    'Sabah-1',
+    'Sabah-2',
+    'Öğle',
+    'Öğleden Sonra-1',
+    'Öğleden Sonra-2',
+  ]
+
+  const sessionTimes = {
+    'Sabah-1': '09:00 - 10:00',
+    'Sabah-2': '10:30 - 11:30',
+    'Öğle': '12:00 - 13:00',
+    'Öğleden Sonra-1': '13:45 - 14:45',
+    'Öğleden Sonra-2': '15:15 - 16:30',
+  }
+
+  const salons = [...new Set(reports.map((report) => report.classroom))]
+    .filter(Boolean)
+    .sort((a, b) => String(a).localeCompare(String(b), 'tr', { numeric: true }))
+
+  const sessions = sessionOrder.filter((session) =>
+    reports.some((report) => report.session === session)
+  )
+
   return (
     <article className="panel page-panel">
-      <div className="panel-heading"><div><h2>Sınav Programı Raporu</h2><p>Ders, oturum, salon, kapasite ve gözetmen çıktısı.</p></div></div>
-      <div className="table-wrapper">
-        <table>
+      <div className="panel-heading">
+        <div>
+          <h2>Örnek Sınav Programı Çıktısı</h2>
+          <p>Excel benzeri sınav programı görünümü</p>
+        </div>
+      </div>
+
+      <div className="excel-wrapper">
+        <table className="excel-report">
           <thead>
             <tr>
-              <th>Ders</th>
-              <th>Bölüm</th>
-              <th>Yarıyıl</th>
-              <th>Tarih</th>
-              <th>Oturum</th>
-              <th>Salon</th>
-              <th>Kapasite</th>
-              <th>Gözetmen</th>
-              <th>Durum</th>
+              <th className="room-col">Salon</th>
+
+              {sessions.map((session) => (
+                <th key={session}>
+                  {sessionTimes[session] || session}
+                </th>
+              ))}
             </tr>
           </thead>
+
           <tbody>
-            {reports.map((report, index) => (
-              <tr key={`${report.courseCode}-${report.date}-${report.classroom}-${index}`}>
-                <td><strong>{report.courseCode}</strong><br />{report.courseName}</td>
-                <td>{report.department}</td>
-                <td>{report.semester}</td>
-                <td>{report.date}</td>
-                <td>{report.session}</td>
-                <td>{report.classroom}</td>
-                <td>{report.studentCount} / {report.capacity}</td>
-                <td>{report.supervisor}</td>
-                <td><StatusBadge value={report.status} /></td>
+            {salons.map((salon) => (
+              <tr key={salon}>
+                <td className="room-cell">{salon}</td>
+
+                {sessions.map((session) => {
+                  const exam = reports.find(
+                    (report) =>
+                      String(report.classroom) === String(salon) &&
+                      report.session === session
+                  )
+
+                  return (
+                    <td key={`${salon}-${session}`}>
+                      {exam ? (
+                        <div className="exam-box">
+                          <strong>{exam.courseCode}</strong>
+
+                          <div>{exam.courseName}</div>
+
+                          <small className="exam-supervisor">
+                            {getSupervisorText(exam)}
+                          </small>
+                        </div>
+                      ) : (
+                        <span className="empty-cell">-</span>
+                      )}
+                    </td>
+                  )
+                })}
               </tr>
             ))}
           </tbody>
@@ -1764,7 +1826,6 @@ function ReportList({ reports }) {
     </article>
   )
 }
-
 function RequirementList({ requirements }) {
   return (
     <article className="panel page-panel">
