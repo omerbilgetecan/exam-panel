@@ -173,7 +173,10 @@ public List<Object[]> spTumSinavlariGetir() {
                     "ISNULL(MAX(s.OgrenciSayisi), d.OgrenciSayisi), d.DersKodu, d.DersAdi, " +
                     "STRING_AGG(dl.DerslikAdi, ', ') AS classroomName, " +
                     "b.BolumID, b.BolumAdi, d.Yariyil, o.BaslangicSaat, o.OturumAdi, " +
-                    "ISNULL(STRING_AGG(CONCAT(p.Unvan, ' ', p.Ad, ' ', p.Soyad), N', '), N'Atama Bekliyor') AS supervisor " +
+                    "CASE WHEN COUNT(p.PersonelID) = 0 THEN N'Atama Bekliyor' " +
+                    "WHEN COUNT(p.PersonelID) = COUNT(s.SinavID) " +
+                    "THEN STRING_AGG(CASE WHEN p.PersonelID IS NULL THEN NULL ELSE CONCAT(p.Unvan, ' ', p.Ad, ' ', p.Soyad) END, N', ') " +
+                    "ELSE CONCAT(STRING_AGG(CASE WHEN p.PersonelID IS NULL THEN NULL ELSE CONCAT(p.Unvan, ' ', p.Ad, ' ', p.Soyad) END, N', '), N', Atama Bekliyor') END AS supervisor " +
                     "FROM dbo.Sinavlar s " +
                     "INNER JOIN dbo.Dersler d ON s.DersID = d.DersID " +
                     "INNER JOIN dbo.Bolumler b ON d.BolumID = b.BolumID " +

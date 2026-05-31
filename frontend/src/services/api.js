@@ -15,6 +15,7 @@ const asNumber = (value, fallback = 0) => {
   const number = Number(value)
   return Number.isFinite(number) ? number : fallback
 }
+const clampPercent = (value) => Math.max(0, Math.min(100, asNumber(value)))
 const pick = (...values) => values.find((value) => value !== undefined && value !== null && value !== '')
 const buildSupervisorName = (person) => {
   const explicitName = pick(person.name, person.fullName, person.personelAdi)
@@ -109,6 +110,22 @@ const getExamRooms = (exam) => String(exam.classroomName || exam.classroom || ''
   .split(',')
   .map((room) => room.trim())
   .filter(Boolean)
+
+const getSupervisorNames = (exam) => {
+  if (Array.isArray(exam.supervisors)) return exam.supervisors.filter(Boolean)
+  return String(exam.supervisor || '')
+    .split(',')
+    .map((name) => name.trim())
+    .filter((name) => name && name !== 'Atama Bekliyor')
+}
+
+const hasAssignedSupervisor = (exam) => getSupervisorNames(exam).length > 0
+
+const normalizeExamAssignment = (exam) => ({
+  ...exam,
+  supervisor: hasAssignedSupervisor(exam) ? getSupervisorNames(exam).join(', ') : 'Atama Bekliyor',
+  status: hasAssignedSupervisor(exam) && exam.status !== 'Atama Bekliyor' ? (exam.status || 'Planlandı') : 'Atama Bekliyor',
+})
 
 const chooseBestRooms = ({ date, sessionId, preferredRoom, preferredRooms = [], studentCount }) => {
   const busyRooms = new Set(
@@ -265,18 +282,21 @@ export const api = {
 
     if (!readDemoMode()) {
       const dashboard = await request('/dashboard', {}, emptyDashboard).catch(() => emptyDashboard)
-      if (dashboard.courseCount || dashboard.personnelCount || dashboard.examCount) return dashboard
+      if (dashboard.courseCount || dashboard.personnelCount || dashboard.examCount) {
+        return { ...dashboard, roomUsage: clampPercent(dashboard.roomUsage) }
+      }
       return {
         ...dashboard,
         courseCount: demoData.courses.length,
         personnelCount: demoData.supervisors.length,
+        roomUsage: clampPercent(dashboard.roomUsage),
       }
     }
     await wait()
-    const assigned = demoData.exams.filter((exam) => exam.supervisor !== 'Atama Bekliyor').length
+    const assigned = demoData.exams.filter(hasAssignedSupervisor).length
     const usedSeats = demoData.capacities.reduce((sum, room) => sum + room.assigned, 0)
     const totalSeats = demoData.capacities.reduce((sum, room) => sum + room.capacity, 0)
-    const roomUsageRatio = totalSeats > 0 ? Math.round((usedSeats / totalSeats) * 100) : 0
+    const roomUsageRatio = totalSeats > 0 ? clampPercent(Math.round((usedSeats / totalSeats) * 100)) : 0
 
     return {
       courseCount: demoData.courses.length,
@@ -305,9 +325,12 @@ export const api = {
   },
 
   async getExams() {
-    if (!readDemoMode()) return request('/exams', {}, []).catch(() => [])
+    if (!readDemoMode()) {
+      const data = await request('/exams', {}, []).catch(() => [])
+      return data.map(normalizeExamAssignment)
+    }
     await wait()
-    return clone(demoData.exams)
+    return clone(demoData.exams.map(normalizeExamAssignment))
   },
 
   async getCapacities() {
@@ -577,35 +600,39 @@ export const api = {
     return clone(newExam)
   },
 
-  async assignSupervisor({ examId, supervisorId }) {
+  async assignSupervisor({ examId, supervisorId, supervisorIds = [] }) {
+    const selectedIds = [...new Set((supervisorIds.length ? supervisorIds : [supervisorId])
+      .map(Number)
+      .filter((id) => Number.isFinite(id) && id > 0))]
+
     if (!readDemoMode()) {
       return request('/assignments', {
         method: 'POST',
-        body: JSON.stringify({ examId: Number(examId), supervisorId: Number(supervisorId) }),
+        body: JSON.stringify({ examId: Number(examId), supervisorIds: selectedIds, useRecommendations: false }),
       }, {})
     }
 
     await wait()
     const exam = demoData.exams.find((entry) => entry.id === Number(examId))
     if (!exam) throw new Error('Sinav bulunamadi.')
-    const preferredSupervisor = demoData.supervisors.find((entry) => entry.id === Number(supervisorId))
     const neededCount = Math.max(1, Number(exam.requiredSupervisorCount || getExamRooms(exam).length || 1))
-    const selectedSupervisors = []
-    const candidatePool = [preferredSupervisor, ...demoData.supervisors]
-      .filter(Boolean)
-      .filter((person, index, list) => list.findIndex((entry) => entry.id === person.id) === index)
-      .filter((person) => person.departmentId === exam.departmentId || String(person.department).includes('Ortak'))
-      .sort((a, b) => Number(a.examCount || 0) - Number(b.examCount || 0))
-    for (const person of candidatePool) {
-      if (selectedSupervisors.length >= neededCount) break
-      if (selectedSupervisors.some((selected) => selected.id === person.id)) continue
-      if (isSupervisorAvailable(person, exam.date, exam.sessionId)) selectedSupervisors.push(person)
+    if (!selectedIds.length) throw new Error('En az bir gözetmen seçmelisin.')
+    if (selectedIds.length > neededCount) throw new Error(`Bu sınav için en fazla ${neededCount} gözetmen seçilebilir.`)
+    if (selectedIds.length < neededCount) throw new Error('Seçilen gözetmen sayısı kalan salon sayısından az. Önerilenleri ekleyip tekrar deneyin.')
+
+    const alreadySelectedIds = new Set((exam.supervisorIds || []).map(Number))
+    const selectedSupervisors = selectedIds.map((id) => demoData.supervisors.find((entry) => entry.id === id))
+    if (selectedSupervisors.some((person) => !person)) throw new Error('Seçilen gözetmen bulunamadı.')
+    for (const person of selectedSupervisors) {
+      if (alreadySelectedIds.has(Number(person.id))) throw new Error(`${person.name} bu sınava zaten atanmış.`)
+      if (!isSupervisorAvailable(person, exam.date, exam.sessionId)) throw new Error(`${person.name} bu oturum için uygun değil.`)
     }
-    if (selectedSupervisors.length < neededCount) throw new Error('Uygun gözetmen bulunamadı. Bölüm ve ortak havuz yetersiz.')
-    exam.supervisors = selectedSupervisors.map((person) => person.name)
-    exam.supervisorIds = selectedSupervisors.map((person) => person.id)
-    exam.supervisor = exam.supervisors.join(', ')
-    exam.status = 'Planlandı'
+
+    exam.supervisors = [...(exam.supervisors || []), ...selectedSupervisors.map((person) => person.name)]
+    exam.supervisorIds = [...(exam.supervisorIds || []), ...selectedSupervisors.map((person) => person.id)]
+    const isComplete = exam.supervisorIds.length >= neededCount
+    exam.supervisor = isComplete ? exam.supervisors.join(', ') : `${exam.supervisors.join(', ')}, Atama Bekliyor`
+    exam.status = isComplete ? 'Planlandı' : 'Atama Bekliyor'
     selectedSupervisors.forEach((person) => {
       person.examCount = Number(person.examCount || 0) + 1
     })

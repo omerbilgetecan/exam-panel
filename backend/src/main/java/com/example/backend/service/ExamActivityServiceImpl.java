@@ -8,11 +8,14 @@ import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.util.Map;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+
 
 @Service
 public class ExamActivityServiceImpl {
@@ -206,9 +209,13 @@ public class ExamActivityServiceImpl {
             dto.setTime(row[12] != null ? row[12].toString().substring(0, 5) : "");
             dto.setSessionName(row[13] != null ? row[13].toString() : "");
             String supervisor = row[14] != null ? row[14].toString().trim() : "";
+            boolean isWaiting = supervisor.isEmpty()
+                    || "Atama Bekliyor".equalsIgnoreCase(supervisor)
+                    || supervisor.contains("Atama Bekliyor")
+                    || supervisor.replace(",", "").trim().isEmpty();
 
-dto.setSupervisor(supervisor.isEmpty() ? "Atama Bekliyor" : supervisor);
-dto.setStatus(supervisor.isEmpty() ? "Atama Bekliyor" : "Planlandı");
+dto.setSupervisor(isWaiting ? "Atama Bekliyor" : supervisor);
+dto.setStatus(isWaiting ? "Atama Bekliyor" : "Planlandı");
             dtoList.add(dto);
         }
         return dtoList;
@@ -244,26 +251,59 @@ dto.setStatus(supervisor.isEmpty() ? "Atama Bekliyor" : "Planlandı");
     @Transactional
     public void assignSupervisor(AssignmentRequestDTO dto) {
         AssignmentRepository.ExamSlot slot = assignmentRepository.findExamSlot(dto.getExamId());
-        List<Integer> examIds = assignmentRepository.unassignedExamSalonIds(dto.getExamId());
+        List<Integer> examIds = assignmentRepository.examSalonIds(dto.getExamId());
         if (examIds.isEmpty()) {
-            throw new IllegalArgumentException("Bu sınava gözetmen atanmış.");
+            throw new IllegalArgumentException("Sınav salonları bulunamadı.");
         }
 
-        List<AssignmentRepository.Candidate> candidates = assignmentRepository.candidates(slot.departmentId(), dto.getSupervisorId());
-        Set<Integer> usedInThisExam = new HashSet<>();
+        List<Integer> requestedSupervisorIds = new ArrayList<>();
+        if (dto.getSupervisorIds() != null) {
+            requestedSupervisorIds.addAll(dto.getSupervisorIds());
+        } else if (dto.getSupervisorId() != null) {
+            requestedSupervisorIds.add(dto.getSupervisorId());
+        }
+        requestedSupervisorIds = new ArrayList<>(new LinkedHashSet<>(requestedSupervisorIds));
+        requestedSupervisorIds.removeIf(id -> id == null || id <= 0);
+        if (requestedSupervisorIds.isEmpty()) {
+            throw new IllegalArgumentException("En az bir gözetmen seçmelisiniz.");
+        }
+        if (requestedSupervisorIds.size() > examIds.size()) {
+            throw new IllegalArgumentException("Seçilen gözetmen sayısı kalan salon sayısından fazla.");
+        }
+        if (requestedSupervisorIds.size() < examIds.size()) {
+            throw new IllegalArgumentException("Seçilen gözetmen sayısı kalan salon sayısından az. Önerilenleri ekleyip tekrar deneyin.");
+        }
 
-        for (Integer examId : examIds) {
+        List<AssignmentRepository.Candidate> candidates = assignmentRepository.candidates(slot.departmentId(), null);
+        Set<Integer> assignedInRequest = new HashSet<>();
+        List<AssignmentRepository.Candidate> selectedCandidates = new ArrayList<>();
+
+        for (Integer requestedSupervisorId : requestedSupervisorIds) {
             AssignmentRepository.Candidate selected = candidates.stream()
-                    .filter(candidate -> !usedInThisExam.contains(candidate.personelId()))
-                    .filter(candidate -> assignmentRepository.isAvailable(candidate.personelId(), slot.date(), slot.sessionId()))
+                    .filter(candidate -> candidate.personelId().equals(requestedSupervisorId))
                     .findFirst()
-                    .orElseThrow(() -> new IllegalArgumentException("Uygun gözetmen bulunamadı. Bölüm ve ortak havuz yetersiz."));
+                    .orElseThrow(() -> new IllegalArgumentException("Seçilen gözetmen bu sınavın bölüm veya ortak havuzunda değil."));
 
-            assignmentRepository.assign(examId, selected.personelId());
-            usedInThisExam.add(selected.personelId());
+            if (assignedInRequest.contains(selected.personelId())) {
+                throw new IllegalArgumentException("Aynı gözetmen aynı sınava birden fazla kez seçilemez.");
+            }
+            assignedInRequest.add(selected.personelId());
+            selectedCandidates.add(selected);
         }
 
-        logRepository.log("Gözetmen atandı", "SınavID " + dto.getExamId() + " için " + usedInThisExam.size() + " personel", "Başarılı");
+        assignmentRepository.clearExamGroupAssignments(dto.getExamId());
+
+        for (AssignmentRepository.Candidate selected : selectedCandidates) {
+            if (!assignmentRepository.isAvailable(selected.personelId(), slot.date(), slot.sessionId())) {
+                throw new IllegalArgumentException(selected.name() + " bu oturum için uygun değil.");
+            }
+        }
+
+        for (int index = 0; index < selectedCandidates.size(); index++) {
+            assignmentRepository.assign(examIds.get(index), selectedCandidates.get(index).personelId());
+        }
+
+        logRepository.log("Gözetmen atandı", "SınavID " + dto.getExamId() + " için " + selectedCandidates.size() + " personel", "Başarılı");
     }
 
     @Transactional
@@ -282,4 +322,30 @@ dto.setStatus(supervisor.isEmpty() ? "Atama Bekliyor" : "Planlandı");
         logRepository.log("Yedekleme tamamlandı", "sp_VeritabaniYedekAl çalıştırıldı", "Başarılı");
         return "Veritabanı yedeği başarıyla oluşturuldu.";
     }
+    @Transactional
+public Map<String, Object> dbCheck() {
+    Object viewResult = entityManager
+            .createNativeQuery("SELECT TOP 1 * FROM dbo.vw_SinavProgrami")
+            .getResultList();
+
+    Object functionResult = entityManager
+            .createNativeQuery("SELECT dbo.fn_GozetmenGorevSayisi(1)")
+            .getSingleResult();
+
+    Object procedureResult = entityManager
+            .createNativeQuery("SELECT name FROM sys.procedures WHERE name = 'sp_GozetmenAta'")
+            .getSingleResult();
+
+    Object triggerResult = entityManager
+            .createNativeQuery("SELECT name FROM sys.triggers WHERE name = 'tr_SinavEkleLog'")
+            .getSingleResult();
+
+    return Map.of(
+            "view", viewResult,
+            "function", functionResult,
+            "procedure", procedureResult,
+            "trigger", triggerResult
+    );
+}
+    
 }

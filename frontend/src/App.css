@@ -884,19 +884,44 @@ select:focus {
 }
 
 .candidate-row {
+  width: 100%;
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 10px;
   border: 1px solid #e6ebf4;
   border-radius: 8px;
   padding: 10px;
   background: #fff;
+  cursor: pointer;
+  text-align: left;
+}
+
+.candidate-row:hover {
+  border-color: #9bbcf4;
+  background: #f5f8ff;
+}
+
+.candidate-row.selected {
+  border-color: #2475ed;
+  background: #eaf2ff;
+  box-shadow: inset 3px 0 0 #2475ed;
 }
 
 .candidate-row span {
   color: #14233d;
   font-size: 13px;
   font-weight: 650;
+}
+
+.candidate-section {
+  display: grid;
+  gap: 8px;
+}
+
+.candidate-section > strong {
+  margin: 0;
+  font-size: 13px;
 }
 
 .toast {

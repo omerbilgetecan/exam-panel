@@ -55,7 +55,8 @@ public class DashboardRepository {
     dto.setExamCount((row[2] != null) ? ((Number) row[2]).intValue() : 0);
     dto.setAssignedCount((row[3] != null) ? ((Number) row[3]).intValue() : 0);
     dto.setPendingCount((row[4] != null) ? ((Number) row[4]).intValue() : 0);
-    dto.setRoomUsage((row[5] != null) ? ((Number) row[5]).intValue() : 0);
+    int roomUsage = (row[5] != null) ? ((Number) row[5]).intValue() : 0;
+    dto.setRoomUsage(Math.max(0, Math.min(100, roomUsage)));
     return dto;
 }
 }

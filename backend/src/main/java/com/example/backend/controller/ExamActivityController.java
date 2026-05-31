@@ -118,6 +118,10 @@ public class ExamActivityController {
     public ResponseEntity<Map<String, String>> runBackup() {
         return ResponseEntity.ok(Map.of("message", examActivityService.runBackup()));
     }
+    @GetMapping("/db-check")
+public ResponseEntity<Map<String, Object>> dbCheck() {
+    return ResponseEntity.ok(examActivityService.dbCheck());
+}
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, String>> handleBusinessError(IllegalArgumentException ex) {

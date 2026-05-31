@@ -42,15 +42,37 @@ return new ExamSlot(
     }
 
     @SuppressWarnings("unchecked")
+    public List<Integer> examSalonIds(Integer examId) {
+        List<Number> rows = entityManager.createNativeQuery(
+                        "SELECT target.SinavID FROM dbo.Sinavlar base " +
+                                "INNER JOIN dbo.Sinavlar target ON target.DersID = base.DersID AND target.Tarih = base.Tarih AND target.OturumID = base.OturumID " +
+                                "WHERE base.SinavID = :examId ORDER BY target.SinavID")
+                .setParameter("examId", examId)
+                .getResultList();
+        return rows.stream().map(Number::intValue).toList();
+    }
+
+    @SuppressWarnings("unchecked")
     public List<Integer> unassignedExamSalonIds(Integer examId) {
         List<Number> rows = entityManager.createNativeQuery(
                         "SELECT target.SinavID FROM dbo.Sinavlar base " +
                                 "INNER JOIN dbo.Sinavlar target ON target.DersID = base.DersID AND target.Tarih = base.Tarih AND target.OturumID = base.OturumID " +
                                 "WHERE base.SinavID = :examId " +
-                                "AND NOT EXISTS (SELECT 1 FROM dbo.Gozetmen_Atamalari ga WHERE ga.SinavID = target.SinavID)")
+                                "AND NOT EXISTS (SELECT 1 FROM dbo.Gozetmen_Atamalari ga WHERE ga.SinavID = target.SinavID) " +
+                                "ORDER BY target.SinavID")
                 .setParameter("examId", examId)
                 .getResultList();
         return rows.stream().map(Number::intValue).toList();
+    }
+
+    public void clearExamGroupAssignments(Integer examId) {
+        entityManager.createNativeQuery(
+                        "DELETE ga FROM dbo.Gozetmen_Atamalari ga " +
+                                "INNER JOIN dbo.Sinavlar target ON ga.SinavID = target.SinavID " +
+                                "INNER JOIN dbo.Sinavlar base ON target.DersID = base.DersID AND target.Tarih = base.Tarih AND target.OturumID = base.OturumID " +
+                                "WHERE base.SinavID = :examId")
+                .setParameter("examId", examId)
+                .executeUpdate();
     }
 
     @SuppressWarnings("unchecked")

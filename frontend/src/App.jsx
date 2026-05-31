@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import { api } from './services/api'
 
@@ -7,7 +7,6 @@ const pages = [
   { id: 'courses', label: 'Dersler', icon: '▤' },
   { id: 'personnel', label: 'Personel', icon: '◉' },
   { id: 'exams', label: 'Sınav Programı', icon: '◫' },
-  { id: 'capacity', label: 'Kapasite', icon: '▥' },
   { id: 'smart-capacity', label: 'Akıllı Salon', icon: '▧' },
   { id: 'supervisors', label: 'Gözetmen Atama', icon: '◎' },
   { id: 'reports', label: 'Raporlar', icon: '≣' },
@@ -16,7 +15,17 @@ const pages = [
 const initialClassroomForm = { classroomName: '', capacity: 60, classroomType: 'Sınıf', floor: 0 };
 pages.push({ id: 'requirements', label: 'Proje Kontrol', icon: 'OK' })
 
-const initialExamForm = { departmentId: '', semester: '', courseId: '', date: '', sessionId: '', classroom: '', classroom2: '', studentCount: 30 }
+const initialExamForm = {
+  departmentId: '',
+  semester: '',
+  courseId: '',
+  date: '',
+  sessionId: '',
+  classroom: '',
+  classroom2: '',
+  classroom3: '',
+  studentCount: 30
+}
 const initialCapacityPlanForm = { courseId: '', date: '', sessionId: '', studentCount: 150 }
 const emptyDashboard = { examCount: 0, assignedCount: 0, roomUsage: 0, pendingCount: 0, courseCount: 0, personnelCount: 0 }
 const initialCourseForm = { code: '', name: '', departmentId: '', semester: 1, studentCount: 30 }
@@ -24,6 +33,7 @@ const initialPersonForm = { name: '', department: '', title: 'Arş. Gör.', avai
 const initialDepartmentForm = { name: '' }
 const initialSessionForm = { name: '', startTime: '', endTime: '' }
 const initialLeaveForm = { supervisorId: '', date: '', sessionId: 'ALL', reason: 'İzinli' }
+const clampPercent = (value) => Math.max(0, Math.min(100, Number(value) || 0))
 
 const projectRequirements = [
   { group: 'Yönetici Ayarları', item: 'Oturum, salon, bölüm, ders ve personel tanımları', status: 'Hazır' },
@@ -151,6 +161,16 @@ const getSupervisorNames = (exam) => {
     .filter((name) => name && name !== 'Atama Bekliyor')
 }
 
+const hasAssignedSupervisor = (exam) => getSupervisorNames(exam).length > 0
+
+const getExamSupervisorText = (exam) => hasAssignedSupervisor(exam)
+  ? getSupervisorNames(exam).join(', ')
+  : 'Atama Bekliyor'
+
+const getExamStatus = (exam) => hasAssignedSupervisor(exam) && exam.status !== 'Atama Bekliyor'
+  ? (exam.status || 'Planlandı')
+  : 'Atama Bekliyor'
+
 const wouldBreakSupervisorChain = (sessionIds, newSessionId) => {
   const ordered = [...new Set([...sessionIds.map(Number), Number(newSessionId)])].sort((a, b) => a - b)
   let chain = 1
@@ -165,8 +185,8 @@ const wouldBreakSupervisorChain = (sessionIds, newSessionId) => {
   return false
 }
 
-const getAssignmentPreview = ({ supervisors, exams, exam, preferredSupervisorId }) => {
-  if (!exam) return { neededCount: 0, candidates: [], departmentCount: 0, usesCommonPool: false }
+const getAssignmentPreview = ({ supervisors, exams, exam }) => {
+  if (!exam) return { neededCount: 0, candidates: [], departmentCandidates: [], commonCandidates: [], departmentCount: 0, usesCommonPool: false }
   const neededCount = Math.max(1, Number(exam.requiredSupervisorCount || getExamRoomNames(exam).length || 1))
   const isCommonPool = (person) => Number(person.departmentId) === 6 || String(person.department).includes('Ortak')
   const isEligible = (person) => {
@@ -181,7 +201,6 @@ const getAssignmentPreview = ({ supervisors, exams, exam, preferredSupervisorId 
     ...person,
     source: Number(person.departmentId) === Number(exam.departmentId) ? 'Bölüm Havuzu' : 'Mühendislik Fakültesi Ortak Havuzu',
   })
-  const preferred = supervisors.find((person) => Number(person.id) === Number(preferredSupervisorId))
   const departmentCandidates = supervisors
     .filter((person) => Number(person.departmentId) === Number(exam.departmentId))
     .filter(isEligible)
@@ -192,15 +211,16 @@ const getAssignmentPreview = ({ supervisors, exams, exam, preferredSupervisorId 
     .filter(isEligible)
     .sort((a, b) => Number(a.examCount || 0) - Number(b.examCount || 0))
     .map(decorate)
-  const preferredCandidate = preferred && isEligible(preferred) ? decorate(preferred) : null
   const basePool = departmentCandidates.length >= neededCount ? departmentCandidates : [...departmentCandidates, ...commonCandidates]
-  const candidates = [preferredCandidate, ...basePool]
+  const candidates = [...basePool]
     .filter(Boolean)
     .filter((person, index, list) => list.findIndex((item) => item.id === person.id) === index)
 
   return {
     neededCount,
     candidates,
+    departmentCandidates,
+    commonCandidates,
     departmentCount: departmentCandidates.length,
     usesCommonPool: departmentCandidates.length < neededCount,
   }
@@ -225,6 +245,7 @@ function App() {
   const [modal, setModal] = useState(null)
   const [toast, setToast] = useState('')
   const [errorText, setErrorText] = useState('')
+  const errorSummaryRef = useRef(null)
   const [examDepartmentFilter, setExamDepartmentFilter] = useState('')
   const [examSemesterFilter, setExamSemesterFilter] = useState('')
   const [capacityPlanForm, setCapacityPlanForm] = useState(initialCapacityPlanForm)
@@ -236,10 +257,10 @@ function App() {
   const [departmentForm, setDepartmentForm] = useState(initialDepartmentForm)
   const [sessionForm, setSessionForm] = useState(initialSessionForm)
   const [leaveForm, setLeaveForm] = useState(initialLeaveForm)
-  const [assignment, setAssignment] = useState({ examId: '', supervisorId: '' })
+  const [assignment, setAssignment] = useState({ examId: '', supervisorIds: [] })
 
   const pendingExams = useMemo(
-    () => exams.filter((exam) => exam.supervisor === 'Atama Bekliyor'),
+    () => exams.filter((exam) => getExamStatus(exam) === 'Atama Bekliyor'),
     [exams],
   )
 
@@ -251,8 +272,14 @@ function App() {
     supervisors,
     exams,
     exam: selectedAssignmentExam,
-    preferredSupervisorId: assignment.supervisorId,
-  }), [assignment.supervisorId, exams, selectedAssignmentExam, supervisors])
+  }), [exams, selectedAssignmentExam, supervisors])
+
+  const selectedAssignmentSupervisors = useMemo(
+    () => assignment.supervisorIds
+      .map((id) => supervisors.find((person) => Number(person.id) === Number(id)))
+      .filter(Boolean),
+    [assignment.supervisorIds, supervisors],
+  )
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -299,6 +326,13 @@ function App() {
     const timeoutId = window.setTimeout(() => setToast(''), 3300)
     return () => window.clearTimeout(timeoutId)
   }, [toast])
+
+  useEffect(() => {
+    if (!errorText) return
+    window.requestAnimationFrame(() => {
+      errorSummaryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }, [errorText])
 
   useEffect(() => {
     if (!courses.length || capacityPlanForm.courseId) return
@@ -349,8 +383,9 @@ function App() {
         semester: safeCourses[0]?.semester ? String(safeCourses[0].semester) : '',
         courseId: safeCourses[0]?.id ? String(safeCourses[0].id) : '',
         date: '', //
-        classroom: capacities[0]?.classroom ?? '', //
+        classroom: '', //
         classroom2: '', //
+        classroom3: '', //
         studentCount: safeCourses[0]?.studentCount ?? 30,
         sessionId: '', //
       });
@@ -483,19 +518,100 @@ function App() {
 
   async function submitAssignment(event) {
     event.preventDefault()
+    setErrorText('')
+
+    if (!assignment.examId) {
+      setErrorText('Lütfen önce atama bekleyen bir sınav seçiniz.')
+      return
+    }
+
+    if (assignment.supervisorIds.length > assignmentPreview.neededCount) {
+      setErrorText(`Bu sınav için en fazla ${assignmentPreview.neededCount} gözetmen seçebilirsiniz.`)
+      return
+    }
+
+    if (!assignment.supervisorIds.length) {
+      setErrorText('Lütfen en az bir gözetmen seçiniz veya Önerilenleri ekle butonunu kullanınız.')
+      return
+    }
+
+    if (assignment.supervisorIds.length < assignmentPreview.neededCount) {
+      setErrorText('Seçilen gözetmen sayısı salon sayısından az. Önerilenleri ekle butonuyla kalanları tamamlayabilirsiniz.')
+      return
+    }
+
     setBusy(true)
     try {
       await api.assignSupervisor(assignment)
+      const freshExams = await api.getExams()
+      const savedExam = freshExams.find((exam) => String(exam.id) === String(assignment.examId))
+      const savedNames = new Set(getSupervisorNames(savedExam || {}).map((name) => name.trim()))
+      const selectedNames = selectedAssignmentSupervisors.map((person) => person.name.trim())
+      const hasOnlySelectedNames = savedNames.size === selectedNames.length && selectedNames.every((name) => savedNames.has(name))
+
+      if (!hasOnlySelectedNames) {
+        setExams(freshExams)
+        throw new Error('Seçtiğin hocalar dışında gözetmen atanmış görünüyor. Backend güncel değilse servisi yeniden başlatıp aynı seçimi tekrar kaydet.')
+      }
+
       setModal(null)
-      setAssignment({ examId: '', supervisorId: '' })
-      setToast('Gözetmen ataması kaydedildi.')
+      setAssignment({ examId: '', supervisorIds: [] })
+      setToast(`${selectedNames.join(', ')} kaydedildi.`)
       await loadData()
       setPage('supervisors')
     } catch (error) {
-      setToast(error.message)
+      setErrorText(error.message)
     } finally {
       setBusy(false)
     }
+  }
+
+  function toggleAssignmentSupervisor(supervisorId) {
+    const id = Number(supervisorId)
+    setErrorText('')
+    setAssignment((current) => {
+      const exists = current.supervisorIds.includes(id)
+      if (exists) {
+        return {
+          ...current,
+          supervisorIds: current.supervisorIds.filter((selectedId) => selectedId !== id),
+        }
+      }
+      return {
+        ...current,
+        supervisorIds: [...current.supervisorIds, id],
+      }
+    })
+  }
+
+  function addRecommendedAssignmentSupervisors() {
+    setErrorText('')
+    if (!selectedAssignmentExam) {
+      setErrorText('Lütfen önce atama bekleyen bir sınav seçiniz.')
+      return
+    }
+
+    const selectedIds = new Set(assignment.supervisorIds.map(Number))
+    const remainingCount = assignmentPreview.neededCount - selectedIds.size
+    if (remainingCount <= 0) {
+      setErrorText('Bu sınav için gerekli gözetmen sayısı zaten seçilmiş.')
+      return
+    }
+
+    const recommendedIds = assignmentPreview.candidates
+      .filter((person) => !selectedIds.has(Number(person.id)))
+      .slice(0, remainingCount)
+      .map((person) => Number(person.id))
+
+    if (recommendedIds.length < remainingCount) {
+      setErrorText('Yeterli müsait bölüm hocası veya ortak havuz gözetmeni bulunamadı.')
+      return
+    }
+
+    setAssignment((current) => ({
+      ...current,
+      supervisorIds: [...current.supervisorIds, ...recommendedIds],
+    }))
   }
 
   async function runBackup() {
@@ -551,7 +667,7 @@ function App() {
     studentCount: examForm.studentCount,
   }), [capacities, examForm.date, examForm.sessionId, examForm.studentCount, exams])
 
-const showCapacityWarning = useMemo(() => {
+  const showCapacityWarning = useMemo(() => {
   if (!examForm.classroom) return false;
 
   // 1. Salonun kapasitesini bul
@@ -563,9 +679,66 @@ const showCapacityWarning = useMemo(() => {
     const room2 = capacities.find(r => r.classroom === examForm.classroom2);
     totalCapacity += room2 ? room2.capacity : 0;
   }
+  if (examForm.classroom3) {
+    const room3 = capacities.find(r => r.classroom === examForm.classroom3);
+    totalCapacity += room3 ? room3.capacity : 0;
+  }
 
   return totalCapacity < Number(examForm.studentCount);
-}, [capacities, examForm.classroom, examForm.classroom2, examForm.studentCount]);
+}, [capacities, examForm.classroom, examForm.classroom2, examForm.classroom3, examForm.studentCount]);
+
+  const busyExamRooms = useMemo(() => {
+    if (!examForm.date || !examForm.sessionId) return new Set()
+    return new Set(
+      exams
+        .filter((exam) => exam.date === examForm.date && String(exam.sessionId) === String(examForm.sessionId))
+        .flatMap(getExamRoomNames),
+    )
+  }, [examForm.date, examForm.sessionId, exams])
+
+  const selectedExamRooms = useMemo(
+    () => [examForm.classroom, examForm.classroom2, examForm.classroom3].filter(Boolean),
+    [examForm.classroom, examForm.classroom2, examForm.classroom3],
+  )
+
+  const selectedExamRoomCapacity = useMemo(() => selectedExamRooms.reduce((total, roomName) => {
+    const room = capacities.find((entry) => entry.classroom === roomName)
+    return total + Number(room?.capacity || 0)
+  }, 0), [capacities, selectedExamRooms])
+
+  const firstTwoRoomCapacity = [examForm.classroom, examForm.classroom2].filter(Boolean).reduce((total, roomName) => {
+    const room = capacities.find((entry) => entry.classroom === roomName)
+    return total + Number(room?.capacity || 0)
+  }, 0)
+  const needsSecondExamRoom = Boolean(examForm.classroom) && selectedExamRoomCapacity < Number(examForm.studentCount)
+  const needsThirdExamRoom = Boolean(examForm.classroom && examForm.classroom2) && firstTwoRoomCapacity < Number(examForm.studentCount)
+
+  const renderRoomOptions = (placeholder, blockedRooms = []) => (
+    <>
+      <option value="">{placeholder}</option>
+      {capacities.map((room) => {
+        const isAlreadySelected = blockedRooms.includes(room.classroom)
+        const isBusy = busyExamRooms.has(room.classroom)
+        const disabled = isAlreadySelected || isBusy
+        const suffix = isBusy ? ' - Dolu' : isAlreadySelected ? ' - Seçildi' : ''
+        return (
+          <option key={room.id} value={room.classroom} disabled={disabled}>
+            {room.classroom} (Kap: {room.capacity}){suffix}
+          </option>
+        )
+      })}
+    </>
+  )
+
+  function applyExamSmartPlan() {
+    const [firstRoom, secondRoom, thirdRoom] = examSmartPlan.selected
+    setExamForm({
+      ...examForm,
+      classroom: firstRoom?.classroom || '',
+      classroom2: secondRoom?.classroom || '',
+      classroom3: thirdRoom?.classroom || '',
+    })
+  }
 
   const title = pages.find((entry) => entry.id === page)?.label
 
@@ -639,7 +812,6 @@ const showCapacityWarning = useMemo(() => {
             {page === 'courses' && <CourseList courses={courses} onAdd={() => setModal('course')} />}
             {page === 'personnel' && <PersonnelList supervisors={supervisors} onAdd={() => setModal('person')} onLeave={() => setModal('leave')} />}
             {page === 'exams' && <ExamSchedule exams={filteredExamSchedule} departments={departments} selectedDepartment={examDepartmentFilter} selectedSemester={examSemesterFilter} onDepartmentChange={setExamDepartmentFilter} onSemesterChange={setExamSemesterFilter} onAdd={openExamModal} disabled={!courses.length} />}
-            {page === 'capacity' && <CapacityList capacities={capacities} />}
             {page === 'smart-capacity' && (
               <CapacityPlanner
                 courses={courses}
@@ -672,7 +844,7 @@ const showCapacityWarning = useMemo(() => {
       {modal === 'classroom' && (
         <Modal title="Yeni Sınav Salonu Tanımla" onClose={() => setModal(null)}>
           {errorText && (
-            <div className="error-box" style={{
+            <div ref={errorSummaryRef} className="error-box" style={{
               backgroundColor: '#fde8e8',
               color: '#e74c3c',
               padding: '12px',
@@ -725,7 +897,7 @@ const showCapacityWarning = useMemo(() => {
 
       {modal === 'session' && (
         <Modal title="Sınav Oturumu Tanımla" onClose={() => setModal(null)}>
-          {errorText && <div className="error-box" style={{backgroundColor:'#fde8e8', color:'#e74c3c', padding:'10px', borderRadius:'4px', marginBottom:'12px', borderLeft:'4px solid #e74c3c', fontSize:'14px', fontWeight:'500'}}>{errorText}</div>}
+          {errorText && <div ref={errorSummaryRef} className="error-box" style={{backgroundColor:'#fde8e8', color:'#e74c3c', padding:'10px', borderRadius:'4px', marginBottom:'12px', borderLeft:'4px solid #e74c3c', fontSize:'14px', fontWeight:'500'}}>{errorText}</div>}
           <form className="form-grid" onSubmit={submitSession}>
             <label>Oturum Adı/Tanımı<input required value={sessionForm.name} onChange={(event) => setSessionForm({ ...sessionForm, name: event.target.value })} placeholder="Örn: Oturum 1 veya Sabah Seansı" /></label>
             <label>Başlangıç Saati<input type="time" required value={sessionForm.startTime} onChange={(event) => setSessionForm({ ...sessionForm, startTime: event.target.value })} /></label>
@@ -800,7 +972,7 @@ const showCapacityWarning = useMemo(() => {
 
       {modal === 'exam' && (
         <Modal title="Yeni Sınav Oluştur" onClose={() => setModal(null)}>
-          {errorText && <div className="error-box" style={{backgroundColor:'#fde8e8', color:'#e74c3c', padding:'10px', borderRadius:'4px', marginBottom:'12px', borderLeft:'4px solid #e74c3c', fontSize:'14px', fontWeight:'500'}}>{errorText}</div>}
+          {errorText && <div ref={errorSummaryRef} className="error-box" style={{backgroundColor:'#fde8e8', color:'#e74c3c', padding:'10px', borderRadius:'4px', marginBottom:'12px', borderLeft:'4px solid #e74c3c', fontSize:'14px', fontWeight:'500'}}>{errorText}</div>}
           <form className="form-grid" onSubmit={submitExam}>
             <label>
               Bölüm
@@ -816,6 +988,7 @@ const showCapacityWarning = useMemo(() => {
                   date: '',
                   classroom: '',
                   classroom2: '',
+                  classroom3: '',
                   sessionId: '',
                 })
               }}>
@@ -840,6 +1013,7 @@ const showCapacityWarning = useMemo(() => {
                   date: '',
                   classroom: '',
                   classroom2: '',
+                  classroom3: '',
                   sessionId: '',
                 })
               }}>
@@ -854,7 +1028,7 @@ const showCapacityWarning = useMemo(() => {
               <select required value={examForm.courseId} onChange={(event) => {
                 // 🎯 Taramayı genel listeyle değil modal listesiyle yapıyoruz:
                 const selected = examModalCourses.find((course) => String(course.id) === event.target.value)
-                setExamForm({ ...examForm, courseId: event.target.value, studentCount: selected?.studentCount ?? examForm.studentCount, date: '', classroom: '', classroom2: '', sessionId: '' })
+                setExamForm({ ...examForm, courseId: event.target.value, studentCount: selected?.studentCount ?? examForm.studentCount, date: '', classroom: '', classroom2: '', classroom3: '', sessionId: '' })
               }}>
                 <option value="">Ders seçin</option>
 
@@ -871,9 +1045,10 @@ const showCapacityWarning = useMemo(() => {
                 required
                 disabled={!examForm.courseId} // Ders seçilmeden tarih seçilemez
                 value={examForm.date}
-                onChange={(event) => setExamForm({ ...examForm, date: event.target.value, classroom: '', classroom2: '', sessionId: '' })}
+                onChange={(event) => setExamForm({ ...examForm, date: event.target.value, classroom: '', classroom2: '', classroom3: '', sessionId: '' })}
               />
             </label>
+
 
             <div className="smart-plan-inline">
               <div>
@@ -892,15 +1067,8 @@ const showCapacityWarning = useMemo(() => {
               <button
                 type="button"
                 className="secondary-button"
-                disabled={!examForm.date || !examSmartPlan.isEnough}
-                onClick={() => {
-                  const [firstRoom, secondRoom] = examSmartPlan.selected
-                  setExamForm({
-                    ...examForm,
-                    classroom: firstRoom?.classroom || '',
-                    classroom2: secondRoom?.classroom || '',
-                  })
-                }}
+                disabled={!examForm.date || !examForm.sessionId || !examSmartPlan.isEnough}
+                onClick={applyExamSmartPlan}
               >
                 Öneriyi Uygula
               </button>
@@ -914,46 +1082,61 @@ const showCapacityWarning = useMemo(() => {
             </div>
 
             {/* 3. ADIM: 1. SALON SEÇİMİ */}
-            <label style={{ opacity: !examForm.date ? 0.6 : 1 }}>
+            <label style={{ opacity: !examForm.date || !examForm.sessionId ? 0.6 : 1 }}>
               1. Salon
               <select
                 required
-                disabled={!examForm.date} // Tarih seçilmeden salon seçilemez
+                disabled={!examForm.date || !examForm.sessionId}
                 value={examForm.classroom}
-                onChange={(event) => setExamForm({ ...examForm, classroom: event.target.value, classroom2: '', sessionId: '' })}
+                onChange={(event) => setExamForm({ ...examForm, classroom: event.target.value, classroom2: '', classroom3: '' })}
               >
-                <option value="">Salon Seçin</option>
-                {capacities.map((room) => <option key={room.id} value={room.classroom}>{room.classroom} (Kap: {room.capacity})</option>)}
+                {renderRoomOptions(examForm.sessionId ? 'Salon Seçin' : 'Önce oturum seçin')}
               </select>
             </label>
 
 
             {/* 🔥 YENİ DİNAMİK ALAN: Eğer 1. salonun kapasitesi yetmiyorsa veya zaten 2. salon seçilmişse ekrana gelir */}
-            {((examForm.classroom && capacities.find(r => r.classroom === examForm.classroom)?.capacity < Number(examForm.studentCount)) || examForm.classroom2) && (
+            {(needsSecondExamRoom || examForm.classroom2) && (
               <label style={{ animation: 'fadeIn 0.2s ease-in-out' }}>
                 <span style={{ color: '#e67e22', fontWeight: '600' }}>2. Salon (Ek Kontenjan Gerekli)</span>
                 <select
                   value={examForm.classroom2 || ''}
-                  onChange={(event) => setExamForm({ ...examForm, classroom2: event.target.value, sessionId: '' })}
+                  onChange={(event) => setExamForm({ ...examForm, classroom2: event.target.value, classroom3: '' })}
                 >
-                  <option value="">Ek 2. Salon Seçin (Opsiyonel)</option>
-                  {capacities
-                    // 1. seçilen salonun listede tekrar çıkmasını engelliyoruz çakışma olmasın diye
-                    .filter(room => room.classroom !== examForm.classroom)
-                    .map((room) => <option key={room.id} value={room.classroom}>{room.classroom} (Kap: {room.capacity})</option>)
-                  }
+                  {renderRoomOptions('Ek 2. Salon Seçin', [examForm.classroom])}
+                </select>
+              </label>
+            )}
+
+            {(needsThirdExamRoom || examForm.classroom3) && (
+              <label style={{ animation: 'fadeIn 0.2s ease-in-out' }}>
+                <span style={{ color: '#c15f00', fontWeight: '600' }}>3. Salon (2 salon yetmedi)</span>
+                <select
+                  value={examForm.classroom3 || ''}
+                  onChange={(event) => setExamForm({ ...examForm, classroom3: event.target.value })}
+                >
+                  {renderRoomOptions('Ek 3. Salon Seçin', [examForm.classroom, examForm.classroom2])}
                 </select>
               </label>
             )}
 
             {showCapacityWarning && (
-              <div style={{color:'#d35400', backgroundColor:'#fff5e6', borderLeft:'3px solid #e67e22', padding:'6px 10px', fontSize:'12px', marginTop:'-6px'}}>
-                ⚠️ Seçilen salonların toplam kapasitesi ders kontenjanını hâlâ karşılamıyor!
+              <div style={{color:'#9a5a00', backgroundColor:'#fff8ed', borderLeft:'2px solid #f0a33a', padding:'4px 8px', fontSize:'11px', lineHeight:'1.35', marginTop:'-8px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'8px'}}>
+                <span>Seçilen salon kapasitesi kontenjanı karşılamıyor.</span>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  disabled={!examForm.date || !examForm.sessionId || !examSmartPlan.isEnough}
+                  onClick={applyExamSmartPlan}
+                  style={{padding:'2px 8px', minHeight:'22px', fontSize:'11px', whiteSpace:'nowrap'}}
+                >
+                  Öneriyi uygula
+                </button>
               </div>
             )}
 
             {/* 4. ADIM: OTURUM SEÇİMİ */}
-            <div className="form-group" style={{display:'flex', flexDirection:'column', gap:'6px', opacity: !examForm.classroom ? 0.6 : 1}}>
+            <div className="form-group" style={{display:'flex', flexDirection:'column', gap:'6px', opacity: !examForm.date ? 0.6 : 1}}>
               <label style={{fontWeight:'600', color:'#34495e', fontSize:'14px'}}>Sınav Oturumu</label>
               <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(130px, 1fr))', gap:'10px'}}>
                 {sessions.length === 0 ? (
@@ -969,14 +1152,14 @@ const showCapacityWarning = useMemo(() => {
                     );
 
                     const isSelected = String(examForm.sessionId) === String(session.id);
-                    const isLocked = !examForm.classroom; // Salon seçilmediyse buton kilitli
+                    const isLocked = !examForm.date; // Tarih seçilmediyse buton kilitli
 
                     return (
                       <div
                         key={session.id}
                         onClick={() => {
                           if (!isConflict && !isLocked) {
-                            setExamForm({ ...examForm, sessionId: String(session.id) })
+                            setExamForm({ ...examForm, sessionId: String(session.id), classroom: '', classroom2: '', classroom3: '' })
                           }
                         }}
                         style={{
@@ -1012,7 +1195,7 @@ const showCapacityWarning = useMemo(() => {
                 )}
               </div>
               <small style={{color:'#7f8c8d', fontSize:'11px', marginTop:'2px'}}>
-                {!examForm.classroom ? "Lütfen önce salon seçiniz." : "Aynı dönem zorunlu ders sınavları aynı saate atanamaz."}
+                {!examForm.date ? "Lütfen önce tarih seçiniz." : "Oturum seçince dolu salonlar listede işaretlenir."}
               </small>
             </div>
 
@@ -1025,31 +1208,64 @@ const showCapacityWarning = useMemo(() => {
       {modal === 'assignment' && (
         <Modal title="Gözetmen Ata" onClose={() => setModal(null)}>
           <form className="single-form" onSubmit={submitAssignment}>
-            <label>Sınav<select required value={assignment.examId} onChange={(event) => setAssignment({ ...assignment, examId: event.target.value })}><option value="">Sınav seçin</option>{pendingExams.map((exam) => <option key={exam.id} value={exam.id}>{exam.courseCode} - {exam.date} - {exam.classroomName || exam.classroom}</option>)}</select></label>
-            <label>Gözetmen<select required value={assignment.supervisorId} onChange={(event) => setAssignment({ ...assignment, supervisorId: event.target.value })}><option value="">Personel seçin</option>{supervisors.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>
+            {errorText && <div ref={errorSummaryRef} className="error-box" style={{backgroundColor:'#fde8e8', color:'#e74c3c', padding:'10px', borderRadius:'4px', marginBottom:'12px', borderLeft:'4px solid #e74c3c', fontSize:'14px', fontWeight:'500'}}>{errorText}</div>}
+            <label>Sınav<select required value={assignment.examId} onChange={(event) => setAssignment({ examId: event.target.value, supervisorIds: [] })}><option value="">Sınav seçin</option>{pendingExams.map((exam) => <option key={exam.id} value={exam.id}>{exam.courseCode} - {exam.date} - {exam.classroomName || exam.classroom}</option>)}</select></label>
             {selectedAssignmentExam && (
               <div className="assignment-preview">
                 <div className="assignment-preview-head">
                   <strong>Modül 3 Atama Havuzu</strong>
-                  <span>{assignmentPreview.neededCount} gözetmen gerekli</span>
+                  <span>{assignment.supervisorIds.length} / {assignmentPreview.neededCount} elle seçildi</span>
                 </div>
+                {selectedAssignmentSupervisors.length > 0 && (
+                  <div style={{fontSize:'12px', color:'#24456f', background:'#eef5ff', border:'1px solid #cfe0ff', borderRadius:'6px', padding:'8px 10px'}}>
+                    Kaydedilecekler: {selectedAssignmentSupervisors.map((person) => person.name).join(', ')}
+                  </div>
+                )}
                 <p>
                   {assignmentPreview.usesCommonPool
-                    ? 'Bölüm havuzu yeterli olmadığı için Mühendislik Fakültesi Ortak Havuzu otomatik listeye dahil edildi.'
-                    : 'Bölüm havuzunda yeterli müsait gözetmen var; ortak havuz yedek olarak bekletiliyor.'}
+                    ? 'Bölüm hocaları yetmezse Önerilenleri ekle butonu kalan görevleri ortak havuzdan tamamlar.'
+                    : 'Önerilenleri ekle butonu kalan görevleri en az görevli müsait bölüm hocalarıyla tamamlar.'}
                 </p>
-                <div className="candidate-list">
-                  {assignmentPreview.candidates.slice(0, Math.max(assignmentPreview.neededCount + 2, 4)).map((person) => (
-                    <div className="candidate-row" key={person.id}>
-                      <span>{person.name}</span>
-                      <small>{person.source} · {person.examCount} görev</small>
-                    </div>
-                  ))}
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={addRecommendedAssignmentSupervisors}
+                  disabled={assignment.supervisorIds.length >= assignmentPreview.neededCount}
+                >
+                  Önerilenleri ekle
+                </button>
+                <div className="candidate-section">
+                  <strong>Bölüm hocaları</strong>
+                  <div className="candidate-list">
+                    {assignmentPreview.departmentCandidates.length ? assignmentPreview.departmentCandidates.map((person) => {
+                      const selected = assignment.supervisorIds.includes(Number(person.id))
+                      return (
+                        <button className={`candidate-row ${selected ? 'selected' : ''}`} type="button" key={person.id} onClick={() => toggleAssignmentSupervisor(person.id)}>
+                          <span>{person.name}</span>
+                          <small>{person.examCount} görev</small>
+                        </button>
+                      )
+                    }) : <small>Bu bölüm için uygun hoca bulunamadı.</small>}
+                  </div>
                 </div>
-                <small>Uygunluk kontrolü: aynı oturum çakışması, izin/danışmanlık ve 3 ardışık oturum sınırı.</small>
+                <div className="candidate-section">
+                  <strong>Ortak havuz</strong>
+                  <div className="candidate-list">
+                    {assignmentPreview.commonCandidates.length ? assignmentPreview.commonCandidates.map((person) => {
+                      const selected = assignment.supervisorIds.includes(Number(person.id))
+                      return (
+                        <button className={`candidate-row ${selected ? 'selected' : ''}`} type="button" key={person.id} onClick={() => toggleAssignmentSupervisor(person.id)}>
+                          <span>{person.name}</span>
+                          <small>{person.department} · {person.examCount} görev</small>
+                        </button>
+                      )
+                    }) : <small>Ortak havuzda uygun personel bulunamadı.</small>}
+                  </div>
+                </div>
+                <small>Kaydet yalnızca seçili hocalarla çalışır. Eksik kalırsa önerilenleri ekleyip tekrar kaydedebilirsin.</small>
               </div>
             )}
-            <div className="form-actions"><button type="button" className="secondary-button" onClick={() => setModal(null)}>Vazgeç</button><button type="submit" className="primary-button" disabled={busy}>Atamayı Kaydet</button></div>
+            <div className="form-actions"><button type="button" className="secondary-button" onClick={() => setModal(null)}>Vazgeç</button><button type="submit" className="primary-button" disabled={busy}>Seçilenleri Kaydet</button></div>
           </form>
         </Modal>
       )}
@@ -1065,7 +1281,7 @@ function Dashboard({ dashboard = emptyDashboard, exams }) {
     { label: 'Toplam Personel', value: dashboard.personnelCount, note: 'Gözetmen havuzu' },
     { label: 'Toplam Sınav', value: dashboard.examCount, note: 'Bu dönem planlanan' },
     { label: 'Atanan Sınav', value: dashboard.assignedCount, note: 'Gözetmeni belli olanlar' },
-    { label: 'Salon Kullanımı', value: `${dashboard.roomUsage}%`, note: 'Sınıf doluluk oranı' },
+    { label: 'Salon Kullanımı', value: `${clampPercent(dashboard.roomUsage)}%`, note: 'Sınıf doluluk oranı' },
     { label: 'Atama Bekleyen', value: dashboard.pendingCount, note: 'Gözetmen atanacaklar', warning: dashboard.pendingCount > 0 },
   ]
 
@@ -1241,10 +1457,68 @@ function CourseList({ courses, onAdd }) {
 }
 
 function PersonnelList({ supervisors, onAdd }) {
+  const groupedSupervisors = useMemo(() => {
+    return supervisors.reduce((groups, person) => {
+      const department = person.department || 'Bölümü Belirsiz'
+
+      if (!groups[department]) {
+        groups[department] = []
+      }
+
+      groups[department].push(person)
+      return groups
+    }, {})
+  }, [supervisors])
+
   return (
     <article className="panel page-panel">
-      <div className="panel-heading"><div><h2>Personel Kayıtları</h2><p>Gözetmen atamasında kullanılacak personel havuzu.</p></div><button className="primary-button" type="button" onClick={onAdd}>+ Personel Ekle</button></div>
-      <PersonnelCards supervisors={supervisors} />
+      <div className="panel-heading">
+        <div>
+          <h2>Personel Kayıtları</h2>
+          <p>Gözetmen atamasında kullanılacak personel havuzu.</p>
+        </div>
+
+        <button
+          className="primary-button"
+          type="button"
+          onClick={onAdd}
+        >
+          + Personel Ekle
+        </button>
+      </div>
+
+      {!supervisors.length ? (
+        <EmptyState text="Henüz personel kaydı bulunmuyor." />
+      ) : (
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '24px',
+            marginTop: '24px',
+          }}
+        >
+          {Object.entries(groupedSupervisors).map(
+            ([departmentName, departmentPeople]) => (
+              <section key={departmentName}>
+                <h3
+                  style={{
+                    margin: '0 0 14px 32px',
+                    color: '#0f2748',
+                    fontSize: '22px',
+                    fontWeight: '800',
+                    lineHeight: '1.2',
+                  }}
+                >
+                  {departmentName}
+                </h3>
+
+                <PersonnelCards supervisors={departmentPeople} />
+              </section>
+            )
+          )}
+        </div>
+      )}
     </article>
   )
 }
@@ -1265,6 +1539,34 @@ function PersonnelCards({ supervisors }) {
   )
 }
 
+function getExamTime(exam) {
+  if (exam.sessionStartTime && exam.sessionEndTime) {
+    return `${exam.sessionStartTime} - ${exam.sessionEndTime}`
+  }
+
+  if (exam.startTime && exam.endTime) {
+    return `${exam.startTime} - ${exam.endTime}`
+  }
+
+  if (exam.sessionName === 'Sabah-1') return '09:00 - 10:00'
+  if (exam.sessionName === 'Sabah-2') return '10:30 - 11:30'
+  if (exam.sessionName === 'Öğle') return '12:00 - 13:00'
+  if (exam.sessionName === 'Öğleden Sonra-1') return '13:45 - 14:45'
+  if (exam.sessionName === 'Öğleden Sonra-2') return '15:15 - 16:30'
+
+  if (exam.session === 'Sabah-1') return '09:00 - 10:00'
+  if (exam.session === 'Sabah-2') return '10:30 - 11:30'
+  if (exam.session === 'Öğle') return '12:00 - 13:00'
+  if (exam.session === 'Öğleden Sonra-1') return '13:45 - 14:45'
+  if (exam.session === 'Öğleden Sonra-2') return '15:15 - 16:30'
+
+  return exam.sessionName || exam.session || '-'
+}
+
+function getExamDepartment(exam) {
+  return exam.department || exam.departmentName || exam.courseDepartment || '-'
+}
+
 function ExamTable({ exams, compact = false }) {
   if (!exams.length) return <EmptyState text="Henüz sınav kaydı bulunmuyor." />
   return (
@@ -1273,7 +1575,9 @@ function ExamTable({ exams, compact = false }) {
         <thead>
           <tr>
             <th>Ders</th>
+            {!compact && <th>Bölüm</th>}
             <th>Tarih</th>
+            {!compact && <th>Saat</th>}
             {!compact && <th>Yarıyıl</th>}
             <th>Salon</th>
             {!compact && <th>Öğrenci</th>}
@@ -1285,12 +1589,14 @@ function ExamTable({ exams, compact = false }) {
           {exams.map((exam) => (
             <tr key={exam.id}>
               <td><strong>{exam.courseCode}</strong><small>{exam.courseName}</small></td>
+              {!compact && <td>{getExamDepartment(exam)}</td>}
               <td>{exam.date}</td>
+              {!compact && <td>{getExamTime(exam)}</td>}
               {!compact && <td>{exam.semester ? String(exam.semester) + '. Yarıyıl' : '-'}</td>}
               <td>{exam.classroomName || exam.classroom}</td>
               {!compact && <td>{exam.studentCount}</td>}
-              <td>{exam.supervisor}</td>
-              <td><StatusBadge value={exam.status} /></td>
+              <td>{getExamSupervisorText(exam)}</td>
+              <td><StatusBadge value={getExamStatus(exam)} /></td>
             </tr>
           ))}
         </tbody>
@@ -1312,18 +1618,6 @@ function ExamSchedule({ exams, departments, selectedDepartment, selectedSemester
     </article>
   )
 }
-
-function CapacityList({ capacities }) {
-  return (
-    <section className="capacity-grid">
-      {capacities.map((room) => {
-        const ratio = Math.round((room.assigned / room.capacity) * 100)
-        return <article className="room-card" key={room.id}><div className="room-title"><div><h2>{room.classroom}</h2><p>{room.building}</p></div><strong>%{ratio}</strong></div><div className="progress"><span style={{ width: `${ratio}%` }} /></div><div className="room-meta"><span>{room.assigned} öğrenci</span><span>{room.capacity} kapasite</span></div></article>
-      })}
-    </section>
-  )
-}
-
 function CapacityPlanner({ courses, sessions, form, selectedCourse, plan, onChange }) {
   const selectedRoomNames = plan.selected.map((room) => room.classroom).join(' ve ')
   const firstFloor = plan.selected[0]?.floor
@@ -1404,7 +1698,7 @@ function CapacityPlanner({ courses, sessions, form, selectedCourse, plan, onChan
 }
 
 function SupervisorList({ supervisors, exams, pendingExams, onAssign }) {
-  const assignedExams = exams.filter((exam) => exam.supervisor !== 'Atama Bekliyor')
+  const assignedExams = exams.filter((exam) => getExamStatus(exam) !== 'Atama Bekliyor')
   return (
     <article className="panel page-panel">
       <div className="panel-heading"><div><h2>Gözetmen Atama</h2><p>{pendingExams.length} sınav için atama bekleniyor.</p></div><button type="button" className="primary-button" disabled={!pendingExams.length || !supervisors.length} onClick={onAssign}>Gözetmen Ata</button></div>
