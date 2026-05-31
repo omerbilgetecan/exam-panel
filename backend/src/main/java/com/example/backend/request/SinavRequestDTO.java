@@ -16,6 +16,8 @@ public class SinavRequestDTO {
     private java.time.LocalDate date;
     private Integer sessionId;
     private String classroom;
+    private String classroom2;
+    private String classroom3;
     private Integer courseId;
     private int studentCount;
 

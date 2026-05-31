@@ -2,26 +2,91 @@
 SET NOCOUNT ON;
 
 -- Derslikler
-IF NOT EXISTS (SELECT 1 FROM dbo.Derslikler WHERE DerslikAdi = N'205') INSERT INTO dbo.Derslikler (DerslikAdi, Kapasite, DerslikTipi, Kat, Aktif) VALUES (N'205', 36, N'Sinif', 2, 1);
-IF NOT EXISTS (SELECT 1 FROM dbo.Derslikler WHERE DerslikAdi = N'206') INSERT INTO dbo.Derslikler (DerslikAdi, Kapasite, DerslikTipi, Kat, Aktif) VALUES (N'206', 36, N'Sinif', 2, 1);
-IF NOT EXISTS (SELECT 1 FROM dbo.Derslikler WHERE DerslikAdi = N'207') INSERT INTO dbo.Derslikler (DerslikAdi, Kapasite, DerslikTipi, Kat, Aktif) VALUES (N'207', 36, N'Sinif', 2, 1);
-IF NOT EXISTS (SELECT 1 FROM dbo.Derslikler WHERE DerslikAdi = N'208') INSERT INTO dbo.Derslikler (DerslikAdi, Kapasite, DerslikTipi, Kat, Aktif) VALUES (N'208', 36, N'Sinif', 2, 1);
-IF NOT EXISTS (SELECT 1 FROM dbo.Derslikler WHERE DerslikAdi = N'305') INSERT INTO dbo.Derslikler (DerslikAdi, Kapasite, DerslikTipi, Kat, Aktif) VALUES (N'305', 36, N'Sinif', 3, 1);
-IF NOT EXISTS (SELECT 1 FROM dbo.Derslikler WHERE DerslikAdi = N'306') INSERT INTO dbo.Derslikler (DerslikAdi, Kapasite, DerslikTipi, Kat, Aktif) VALUES (N'306', 36, N'Sinif', 3, 1);
-IF NOT EXISTS (SELECT 1 FROM dbo.Derslikler WHERE DerslikAdi = N'307') INSERT INTO dbo.Derslikler (DerslikAdi, Kapasite, DerslikTipi, Kat, Aktif) VALUES (N'307', 36, N'Sinif', 3, 1);
-IF NOT EXISTS (SELECT 1 FROM dbo.Derslikler WHERE DerslikAdi = N'308') INSERT INTO dbo.Derslikler (DerslikAdi, Kapasite, DerslikTipi, Kat, Aktif) VALUES (N'308', 36, N'Sinif', 3, 1);
-IF NOT EXISTS (SELECT 1 FROM dbo.Derslikler WHERE DerslikAdi = N'309') INSERT INTO dbo.Derslikler (DerslikAdi, Kapasite, DerslikTipi, Kat, Aktif) VALUES (N'309', 40, N'Sinif', 3, 1);
-IF NOT EXISTS (SELECT 1 FROM dbo.Derslikler WHERE DerslikAdi = N'311') INSERT INTO dbo.Derslikler (DerslikAdi, Kapasite, DerslikTipi, Kat, Aktif) VALUES (N'311', 50, N'Sinif', 3, 1);
-IF NOT EXISTS (SELECT 1 FROM dbo.Derslikler WHERE DerslikAdi = N'209') INSERT INTO dbo.Derslikler (DerslikAdi, Kapasite, DerslikTipi, Kat, Aktif) VALUES (N'209', 60, N'Sinif', 2, 1);
-IF NOT EXISTS (SELECT 1 FROM dbo.Derslikler WHERE DerslikAdi = N'210') INSERT INTO dbo.Derslikler (DerslikAdi, Kapasite, DerslikTipi, Kat, Aktif) VALUES (N'210', 60, N'Sinif', 2, 1);
-IF NOT EXISTS (SELECT 1 FROM dbo.Derslikler WHERE DerslikAdi = N'310') INSERT INTO dbo.Derslikler (DerslikAdi, Kapasite, DerslikTipi, Kat, Aktif) VALUES (N'310', 60, N'Sinif', 3, 1);
-IF NOT EXISTS (SELECT 1 FROM dbo.Derslikler WHERE DerslikAdi = N'409') INSERT INTO dbo.Derslikler (DerslikAdi, Kapasite, DerslikTipi, Kat, Aktif) VALUES (N'409', 60, N'Sinif', 4, 1);
-IF NOT EXISTS (SELECT 1 FROM dbo.Derslikler WHERE DerslikAdi = N'410') INSERT INTO dbo.Derslikler (DerslikAdi, Kapasite, DerslikTipi, Kat, Aktif) VALUES (N'410', 60, N'Sinif', 4, 1);
-UPDATE dbo.Derslikler SET Kapasite = 36, DerslikTipi = N'Kucuk Sinif', Aktif = 1 WHERE DerslikAdi IN (N'205', N'206', N'207', N'208', N'305', N'306', N'307', N'308');
-UPDATE dbo.Derslikler SET Kapasite = 40, DerslikTipi = N'Orta Sinif', Aktif = 1 WHERE DerslikAdi = N'309';
-UPDATE dbo.Derslikler SET Kapasite = 50, DerslikTipi = N'Orta Sinif', Aktif = 1 WHERE DerslikAdi = N'311';
-UPDATE dbo.Derslikler SET Kapasite = 60, DerslikTipi = N'Buyuk Sinif', Aktif = 1 WHERE DerslikAdi IN (N'209', N'210', N'310', N'409', N'410');
-UPDATE dbo.Derslikler SET Aktif = 0 WHERE DerslikAdi NOT IN (N'205', N'206', N'207', N'208', N'305', N'306', N'307', N'308', N'309', N'311', N'209', N'210', N'310', N'409', N'410');
+
+IF NOT EXISTS (SELECT 1 FROM dbo.Derslikler WHERE DerslikAdi = N'205')
+    INSERT INTO dbo.Derslikler (DerslikAdi, Kapasite, DerslikTipi, Kat, Aktif)
+    VALUES (N'205', 36, N'Kucuk Sinif', 2, 1);
+
+IF NOT EXISTS (SELECT 1 FROM dbo.Derslikler WHERE DerslikAdi = N'206')
+    INSERT INTO dbo.Derslikler (DerslikAdi, Kapasite, DerslikTipi, Kat, Aktif)
+    VALUES (N'206', 36, N'Kucuk Sinif', 2, 1);
+
+IF NOT EXISTS (SELECT 1 FROM dbo.Derslikler WHERE DerslikAdi = N'207')
+    INSERT INTO dbo.Derslikler (DerslikAdi, Kapasite, DerslikTipi, Kat, Aktif)
+    VALUES (N'207', 36, N'Kucuk Sinif', 2, 1);
+
+IF NOT EXISTS (SELECT 1 FROM dbo.Derslikler WHERE DerslikAdi = N'208')
+    INSERT INTO dbo.Derslikler (DerslikAdi, Kapasite, DerslikTipi, Kat, Aktif)
+    VALUES (N'208', 36, N'Kucuk Sinif', 2, 1);
+
+IF NOT EXISTS (SELECT 1 FROM dbo.Derslikler WHERE DerslikAdi = N'305')
+    INSERT INTO dbo.Derslikler (DerslikAdi, Kapasite, DerslikTipi, Kat, Aktif)
+    VALUES (N'305', 36, N'Kucuk Sinif', 3, 1);
+
+IF NOT EXISTS (SELECT 1 FROM dbo.Derslikler WHERE DerslikAdi = N'306')
+    INSERT INTO dbo.Derslikler (DerslikAdi, Kapasite, DerslikTipi, Kat, Aktif)
+    VALUES (N'306', 36, N'Kucuk Sinif', 3, 1);
+
+IF NOT EXISTS (SELECT 1 FROM dbo.Derslikler WHERE DerslikAdi = N'307')
+    INSERT INTO dbo.Derslikler (DerslikAdi, Kapasite, DerslikTipi, Kat, Aktif)
+    VALUES (N'307', 36, N'Kucuk Sinif', 3, 1);
+
+IF NOT EXISTS (SELECT 1 FROM dbo.Derslikler WHERE DerslikAdi = N'308')
+    INSERT INTO dbo.Derslikler (DerslikAdi, Kapasite, DerslikTipi, Kat, Aktif)
+    VALUES (N'308', 36, N'Kucuk Sinif', 3, 1);
+
+IF NOT EXISTS (SELECT 1 FROM dbo.Derslikler WHERE DerslikAdi = N'309')
+    INSERT INTO dbo.Derslikler (DerslikAdi, Kapasite, DerslikTipi, Kat, Aktif)
+    VALUES (N'309', 40, N'Orta Sinif', 3, 1);
+
+IF NOT EXISTS (SELECT 1 FROM dbo.Derslikler WHERE DerslikAdi = N'311')
+    INSERT INTO dbo.Derslikler (DerslikAdi, Kapasite, DerslikTipi, Kat, Aktif)
+    VALUES (N'311', 50, N'Orta Sinif', 3, 1);
+
+IF NOT EXISTS (SELECT 1 FROM dbo.Derslikler WHERE DerslikAdi = N'209')
+    INSERT INTO dbo.Derslikler (DerslikAdi, Kapasite, DerslikTipi, Kat, Aktif)
+    VALUES (N'209', 60, N'Buyuk Sinif', 2, 1);
+
+IF NOT EXISTS (SELECT 1 FROM dbo.Derslikler WHERE DerslikAdi = N'210')
+    INSERT INTO dbo.Derslikler (DerslikAdi, Kapasite, DerslikTipi, Kat, Aktif)
+    VALUES (N'210', 60, N'Buyuk Sinif', 2, 1);
+
+IF NOT EXISTS (SELECT 1 FROM dbo.Derslikler WHERE DerslikAdi = N'310')
+    INSERT INTO dbo.Derslikler (DerslikAdi, Kapasite, DerslikTipi, Kat, Aktif)
+    VALUES (N'310', 60, N'Buyuk Sinif', 3, 1);
+
+IF NOT EXISTS (SELECT 1 FROM dbo.Derslikler WHERE DerslikAdi = N'409')
+    INSERT INTO dbo.Derslikler (DerslikAdi, Kapasite, DerslikTipi, Kat, Aktif)
+    VALUES (N'409', 60, N'Buyuk Sinif', 4, 1);
+
+IF NOT EXISTS (SELECT 1 FROM dbo.Derslikler WHERE DerslikAdi = N'410')
+    INSERT INTO dbo.Derslikler (DerslikAdi, Kapasite, DerslikTipi, Kat, Aktif)
+    VALUES (N'410', 60, N'Buyuk Sinif', 4, 1);
+
+UPDATE dbo.Derslikler
+SET Kapasite = 36, DerslikTipi = N'Kucuk Sinif', Aktif = 1
+WHERE DerslikAdi IN (N'205', N'206', N'207', N'208', N'305', N'306', N'307', N'308');
+
+UPDATE dbo.Derslikler
+SET Kapasite = 40, DerslikTipi = N'Orta Sinif', Aktif = 1
+WHERE DerslikAdi = N'309';
+
+UPDATE dbo.Derslikler
+SET Kapasite = 50, DerslikTipi = N'Orta Sinif', Aktif = 1
+WHERE DerslikAdi = N'311';
+
+UPDATE dbo.Derslikler
+SET Kapasite = 60, DerslikTipi = N'Buyuk Sinif', Aktif = 1
+WHERE DerslikAdi IN (N'209', N'210', N'310', N'409', N'410');
+
+UPDATE dbo.Derslikler
+SET Aktif = 0
+WHERE DerslikAdi NOT IN (
+    N'205', N'206', N'207', N'208',
+    N'305', N'306', N'307', N'308',
+    N'309', N'311',
+    N'209', N'210', N'310', N'409', N'410'
+);
 
 -- Oturumlar
 IF NOT EXISTS (SELECT 1 FROM dbo.Oturumlar WHERE OturumAdi = N'Sabah-1') INSERT INTO dbo.Oturumlar (OturumAdi, BaslangicSaat, BitisSaat) VALUES (N'Sabah-1', '09:00', '10:00');

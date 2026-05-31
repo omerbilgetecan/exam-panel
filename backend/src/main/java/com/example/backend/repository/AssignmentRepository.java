@@ -25,7 +25,20 @@ public class AssignmentRepository {
                         "SELECT s.SinavID, s.Tarih, s.OturumID, d.BolumID FROM dbo.Sinavlar s INNER JOIN dbo.Dersler d ON s.DersID = d.DersID WHERE s.SinavID = :examId")
                 .setParameter("examId", examId)
                 .getSingleResult();
-        return new ExamSlot(((Number) row[0]).intValue(), (LocalDate) row[1], ((Number) row[2]).intValue(), ((Number) row[3]).intValue());
+        LocalDate examDate;
+
+if (row[1] instanceof java.sql.Date sqlDate) {
+    examDate = sqlDate.toLocalDate();
+} else {
+    examDate = (LocalDate) row[1];
+}
+
+return new ExamSlot(
+        ((Number) row[0]).intValue(),
+        examDate,
+        ((Number) row[2]).intValue(),
+        ((Number) row[3]).intValue()
+);
     }
 
     @SuppressWarnings("unchecked")

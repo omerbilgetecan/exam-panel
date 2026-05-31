@@ -1,13 +1,16 @@
 import { seedData } from '../data/seedData'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080/api'
+const API_TIMEOUT_MS = 2500
 
 const wait = (duration = 220) =>
   new Promise((resolve) => window.setTimeout(resolve, duration))
 
 const clone = (value) => JSON.parse(JSON.stringify(value))
+const withSeedFallback = (items, fallbackItems) =>
+  Array.isArray(items) && items.length ? items : clone(fallbackItems || [])
 
-const readDemoMode = () => window.localStorage.getItem('exam-demo-mode') !== 'false'
+const readDemoMode = () => import.meta.env.VITE_DEMO_MODE === 'true'
 const asNumber = (value, fallback = 0) => {
   const number = Number(value)
   return Number.isFinite(number) ? number : fallback
@@ -107,7 +110,7 @@ const getExamRooms = (exam) => String(exam.classroomName || exam.classroom || ''
   .map((room) => room.trim())
   .filter(Boolean)
 
-const chooseBestRooms = ({ date, sessionId, preferredRoom, studentCount }) => {
+const chooseBestRooms = ({ date, sessionId, preferredRoom, preferredRooms = [], studentCount }) => {
   const busyRooms = new Set(
     demoData.exams
       .filter((exam) => exam.date === date && getExamSessionId(exam) === Number(sessionId))
@@ -116,10 +119,12 @@ const chooseBestRooms = ({ date, sessionId, preferredRoom, studentCount }) => {
   const available = demoData.capacities.filter((room) => !busyRooms.has(room.classroom))
   const selected = []
 
-  if (preferredRoom) {
-    const room = available.find((entry) => entry.classroom === preferredRoom)
-    if (!room) throw new Error(`SeÃ§ilen salon bu tarih ve oturumda dolu: ${preferredRoom}`)
+  const requestedRooms = [...new Set([preferredRoom, ...preferredRooms].filter(Boolean))]
+  for (const roomName of requestedRooms) {
+    const room = available.find((entry) => entry.classroom === roomName)
+    if (!room) throw new Error(`Seçilen salon bu tarih ve oturumda dolu: ${roomName}`)
     selected.push(room)
+    available.splice(available.findIndex((entry) => entry.id === room.id), 1)
   }
 
   let remaining = Number(studentCount) - selected.reduce((sum, room) => sum + Number(room.capacity), 0)
@@ -139,7 +144,7 @@ const chooseBestRooms = ({ date, sessionId, preferredRoom, studentCount }) => {
   }
 
   if (selected.reduce((sum, room) => sum + Number(room.capacity), 0) < Number(studentCount)) {
-    throw new Error('MÃ¼sait salonlarÄ±n toplam kapasitesi bu ders iÃ§in yetersiz.')
+    throw new Error('Müsait salonların toplam kapasitesi bu ders için yetersiz.')
   }
   return selected
 }
@@ -176,9 +181,12 @@ const isSupervisorAvailable = (supervisor, date, sessionId) => {
 }
 
 async function request(path, options) {
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), API_TIMEOUT_MS)
   try {
     const response = await fetch(`${API_BASE_URL}${path}`, {
       headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
       ...options,
     })
 
@@ -192,7 +200,15 @@ async function request(path, options) {
     return response.json()
   } catch (error) {
     console.error(`Sunucu bağlantı hatası: ${path} adresine erişilemedi.`, error)
+    if (error.name === 'AbortError') {
+      throw new Error('Backend cevap vermedi. SQL Server bağlantısı veya 8080 backend servisi kapalı olabilir.')
+    }
+    if (error instanceof TypeError) {
+      throw new Error('Backend çalışmıyor. Sınavı veritabanına kaydetmek için 8080 API servisini başlatmalısın.')
+    }
     throw error;
+  } finally {
+    window.clearTimeout(timeout)
   }
 }
 
@@ -211,8 +227,8 @@ export const api = {
 
   async getDepartments() {
     if (!readDemoMode()) {
-      const data = await request('/departments', {}, [])
-      return data.map(normalizeDepartment)
+      const data = await request('/departments', {}, []).catch(() => [])
+      return withSeedFallback(data.map(normalizeDepartment), demoData.departments)
     }
     await wait()
     return clone(demoData.departments || [])
@@ -247,7 +263,15 @@ export const api = {
       pendingCount: 0
     }
 
-    if (!readDemoMode()) return request('/dashboard', {}, emptyDashboard)
+    if (!readDemoMode()) {
+      const dashboard = await request('/dashboard', {}, emptyDashboard).catch(() => emptyDashboard)
+      if (dashboard.courseCount || dashboard.personnelCount || dashboard.examCount) return dashboard
+      return {
+        ...dashboard,
+        courseCount: demoData.courses.length,
+        personnelCount: demoData.supervisors.length,
+      }
+    }
     await wait()
     const assigned = demoData.exams.filter((exam) => exam.supervisor !== 'Atama Bekliyor').length
     const usedSeats = demoData.capacities.reduce((sum, room) => sum + room.assigned, 0)
@@ -266,8 +290,8 @@ export const api = {
 
   async getCourses() {
     if (!readDemoMode()) {
-      const data = await request('/courses', {}, []);
-      return data.map(normalizeCourse);
+      const data = await request('/courses', {}, []).catch(() => []);
+      return withSeedFallback(data.map(normalizeCourse), demoData.courses);
     }
     await wait();
     return clone(demoData.courses);
@@ -281,24 +305,25 @@ export const api = {
   },
 
   async getExams() {
-    if (!readDemoMode()) return request('/exams', {}, [])
+    if (!readDemoMode()) return request('/exams', {}, []).catch(() => [])
     await wait()
     return clone(demoData.exams)
   },
 
   async getCapacities() {
     if (!readDemoMode()) {
-      const data = await request('/capacities', {}, []);
+      const data = await request('/capacities', {}, []).catch(() => []);
       // 🎯 DÜZELTME: Backend'den (ClassroomRequestDTO) gelen listeyi arayüze mapliyoruz
-      return data.map((room, idx) => ({
+      const rooms = data.map((room, idx) => ({
         id: room.id || idx + 1,
         classroom: room.classroomName || "Tanımsız Salon", // backend: classroomName -> frontend: classroom
         capacity: room.capacity || 60,
-        assigned: 0,
+        assigned: Number(room.assigned ?? 0),
         building: room.floor === 0 ? "Zemin Kat" : room.floor + ". Kat",
         floor: Number(room.floor ?? 0),
         type: room.classroomType || 'Sınıf',
       }));
+      return withSeedFallback(rooms, demoData.capacities)
     }
     await wait()
     return clone(demoData.capacities)
@@ -306,21 +331,21 @@ export const api = {
 
   async getSupervisors() {
     if (!readDemoMode()) {
-      const data = await request('/supervisors', {}, [])
-      return data.map(normalizeSupervisor)
+      const data = await request('/supervisors', {}, []).catch(() => [])
+      return withSeedFallback(data.map(normalizeSupervisor), demoData.supervisors)
     }
     await wait()
     return clone(demoData.supervisors)
   },
 
   async getLogs() {
-    if (!readDemoMode()) return request('/logs', {}, [])
+    if (!readDemoMode()) return request('/logs', {}, []).catch(() => clone(demoData.logs))
     await wait(120)
     return clone(demoData.logs)
   },
 
   async getExamProgramReport() {
-    if (!readDemoMode()) return request('/reports/exam-program', {}, [])
+    if (!readDemoMode()) return request('/reports/exam-program', {}, []).catch(() => [])
     await wait(120)
     return demoData.exams.map((exam) => {
       const roomNames = getExamRooms(exam)
@@ -345,7 +370,10 @@ export const api = {
   },
 
   async getSessions() {
-    if (!readDemoMode()) return request('/sessions', {}, [])
+    if (!readDemoMode()) {
+      const data = await request('/sessions', {}, []).catch(() => [])
+      return withSeedFallback(data, demoData.sessions)
+    }
     await wait()
     return clone(demoData.sessions || [])
   },
@@ -518,6 +546,7 @@ export const api = {
       date: exam.date,
       sessionId,
       preferredRoom: exam.classroom,
+      preferredRooms: [exam.classroom2, exam.classroom3],
       studentCount: course.studentCount,
     })
     const newExam = {
