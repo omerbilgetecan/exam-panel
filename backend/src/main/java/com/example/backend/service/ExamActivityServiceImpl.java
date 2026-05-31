@@ -188,7 +188,11 @@ public class ExamActivityServiceImpl {
             SinavRequestDTO dto = new SinavRequestDTO();
             dto.setId(((Number) row[0]).intValue());
             dto.setCourseId(((Number) row[1]).intValue());
-            dto.setDate((LocalDate) row[2]);
+            if (row[2] instanceof java.sql.Date sqlDate) {
+    dto.setDate(sqlDate.toLocalDate());
+} else if (row[2] instanceof LocalDate localDate) {
+    dto.setDate(localDate);
+}
             dto.setSessionId(((Number) row[3]).intValue());
             dto.setClassroom(row[4] != null ? row[4].toString() : "");
             dto.setStudentCount(((Number) row[5]).intValue());
@@ -200,8 +204,10 @@ public class ExamActivityServiceImpl {
             dto.setSemester(row[11] != null ? ((Number) row[11]).intValue() : null);
             dto.setTime(row[12] != null ? row[12].toString().substring(0, 5) : "");
             dto.setSessionName(row[13] != null ? row[13].toString() : "");
-            dto.setSupervisor(row[14] != null ? row[14].toString() : "Atama Bekliyor");
-            dto.setStatus("Atama Bekliyor".equals(dto.getSupervisor()) ? "Atama Bekliyor" : "Planlandı");
+            String supervisor = row[14] != null ? row[14].toString().trim() : "";
+
+dto.setSupervisor(supervisor.isEmpty() ? "Atama Bekliyor" : supervisor);
+dto.setStatus(supervisor.isEmpty() ? "Atama Bekliyor" : "Planlandı");
             dtoList.add(dto);
         }
         return dtoList;
