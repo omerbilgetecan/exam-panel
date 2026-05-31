@@ -250,10 +250,15 @@ function App() {
   const [leaveForm, setLeaveForm] = useState(initialLeaveForm)
   const [assignment, setAssignment] = useState({ examId: '', supervisorId: '' })
 
-  const pendingExams = useMemo(
-    () => exams.filter((exam) => exam.supervisor === 'Atama Bekliyor'),
-    [exams],
-  )
+const pendingExams = useMemo(
+  () => exams.filter((exam) => {
+    const roomCount = Math.max(1, getExamRoomNames(exam).length)
+    const supervisorCount = getSupervisorNames(exam).length
+
+    return supervisorCount < roomCount
+  }),
+  [exams],
+)
 
   const selectedAssignmentExam = useMemo(() => {
     return pendingExams.find((exam) => String(exam.id) === String(assignment.examId))

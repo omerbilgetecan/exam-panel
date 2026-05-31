@@ -318,7 +318,7 @@ export const api = {
         id: room.id || idx + 1,
         classroom: room.classroomName || "Tanımsız Salon", // backend: classroomName -> frontend: classroom
         capacity: room.capacity || 60,
-        assigned: 0,
+        assigned: Number(room.assigned ?? 0),
         building: room.floor === 0 ? "Zemin Kat" : room.floor + ". Kat",
         floor: Number(room.floor ?? 0),
         type: room.classroomType || 'Sınıf',

@@ -167,14 +167,15 @@ public class ExamActivityServiceImpl {
         List<ClassroomRequestDTO> dtoList = new ArrayList<>();
 
         for (Object[] row : rows) {
-            dtoList.add(new ClassroomRequestDTO(
-                    row[0] != null ? ((Number) row[0]).intValue() : null,
-                    row[1] != null ? row[1].toString() : null,
-                    row[2] != null ? ((Number) row[2]).intValue() : 0,
-                    row[3] != null ? row[3].toString() : "Sınıf",
-                    row[4] != null ? ((Number) row[4]).intValue() : 0,
-                    row[5] == null || (Boolean) row[5]
-            ));
+           dtoList.add(new ClassroomRequestDTO(
+        row[0] != null ? ((Number) row[0]).intValue() : null,
+        row[1] != null ? row[1].toString() : null,
+        row[2] != null ? ((Number) row[2]).intValue() : 0,
+        row[3] != null ? row[3].toString() : "Sınıf",
+        row[4] != null ? ((Number) row[4]).intValue() : 0,
+        row[5] == null || (Boolean) row[5],
+        row[6] != null ? ((Number) row[6]).intValue() : 0
+));
         }
         return dtoList;
     }

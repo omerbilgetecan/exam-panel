@@ -55,7 +55,7 @@ public class SInavRepository {
     @SuppressWarnings("unchecked")
     public List<Integer> sameSemesterSessionsOnDate(LocalDate date, Integer departmentId, Integer semester) {
         List<Number> rows = entityManager.createNativeQuery(
-                        "SELECT s.OturumID FROM dbo.Sinavlar s " +
+                        "SELECT DISTINCT s.OturumID FROM dbo.Sinavlar s " +
                                 "INNER JOIN dbo.Dersler d ON s.DersID = d.DersID " +
                                 "WHERE s.Tarih = :date AND d.BolumID = :departmentId AND d.Yariyil = :semester")
                 .setParameter("date", date)
@@ -165,23 +165,25 @@ public class SInavRepository {
         return firstExamId;
     }
 
-    @SuppressWarnings("unchecked")
-    public List<Object[]> spTumSinavlariGetir() {
-        return entityManager.createNativeQuery(
-                        "SELECT s.SinavID, d.DersID, s.Tarih, s.OturumID, " +
-                                "dl.DerslikAdi AS classroom, ISNULL(s.OgrenciSayisi, d.OgrenciSayisi), d.DersKodu, d.DersAdi, " +
-                                "dl.DerslikAdi AS classroomName, b.BolumID, b.BolumAdi, d.Yariyil, o.BaslangicSaat, o.OturumAdi, " +
-                                "ISNULL(STRING_AGG(CONCAT(p.Unvan, ' ', p.Ad, ' ', p.Soyad), N', '), N'Atama Bekliyor') AS supervisor " +
-                                "FROM dbo.Sinavlar s " +
-                                "INNER JOIN dbo.Dersler d ON s.DersID = d.DersID " +
-                                "INNER JOIN dbo.Bolumler b ON d.BolumID = b.BolumID " +
-                                "INNER JOIN dbo.Oturumlar o ON s.OturumID = o.OturumID " +
-                                "INNER JOIN dbo.Derslikler dl ON s.DerslikID = dl.DerslikID " +
-                                "LEFT JOIN dbo.Gozetmen_Atamalari ga ON s.SinavID = ga.SinavID " +
-                                "LEFT JOIN dbo.Personel p ON ga.PersonelID = p.PersonelID " +
-                                "GROUP BY s.SinavID, d.DersID, s.Tarih, s.OturumID, dl.DerslikAdi, s.OgrenciSayisi, " +
-                                "d.OgrenciSayisi, d.DersKodu, d.DersAdi, b.BolumID, b.BolumAdi, d.Yariyil, o.BaslangicSaat, o.OturumAdi " +
-                                "ORDER BY s.Tarih, o.BaslangicSaat, d.DersKodu")
-                .getResultList();
-    }
+   @SuppressWarnings("unchecked")
+public List<Object[]> spTumSinavlariGetir() {
+    return entityManager.createNativeQuery(
+            "SELECT MIN(s.SinavID) AS SinavID, d.DersID, s.Tarih, s.OturumID, " +
+                    "STRING_AGG(dl.DerslikAdi, ', ') AS classroom, " +
+                    "ISNULL(MAX(s.OgrenciSayisi), d.OgrenciSayisi), d.DersKodu, d.DersAdi, " +
+                    "STRING_AGG(dl.DerslikAdi, ', ') AS classroomName, " +
+                    "b.BolumID, b.BolumAdi, d.Yariyil, o.BaslangicSaat, o.OturumAdi, " +
+                    "ISNULL(STRING_AGG(CONCAT(p.Unvan, ' ', p.Ad, ' ', p.Soyad), N', '), N'Atama Bekliyor') AS supervisor " +
+                    "FROM dbo.Sinavlar s " +
+                    "INNER JOIN dbo.Dersler d ON s.DersID = d.DersID " +
+                    "INNER JOIN dbo.Bolumler b ON d.BolumID = b.BolumID " +
+                    "INNER JOIN dbo.Oturumlar o ON s.OturumID = o.OturumID " +
+                    "INNER JOIN dbo.Derslikler dl ON s.DerslikID = dl.DerslikID " +
+                    "LEFT JOIN dbo.Gozetmen_Atamalari ga ON s.SinavID = ga.SinavID " +
+                    "LEFT JOIN dbo.Personel p ON ga.PersonelID = p.PersonelID " +
+                    "GROUP BY d.DersID, s.Tarih, s.OturumID, d.OgrenciSayisi, d.DersKodu, d.DersAdi, " +
+                    "b.BolumID, b.BolumAdi, d.Yariyil, o.BaslangicSaat, o.OturumAdi " +
+                    "ORDER BY s.Tarih, o.BaslangicSaat, d.DersKodu")
+            .getResultList();
+}
 }

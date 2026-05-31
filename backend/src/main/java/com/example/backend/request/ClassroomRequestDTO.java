@@ -1,6 +1,5 @@
 package com.example.backend.request;
 
-import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -9,23 +8,30 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 public class ClassroomRequestDTO {
+
     private Integer id;
-    private String classroomName; // DerslikAdi
-    private int capacity;         // Kapasite
-    private String classroomType; // DerslikTipi
-    private int floor;            // Kat
-    private boolean active;       // Aktif
+    private String classroomName;
+    private int capacity;
+    private String classroomType;
+    private int floor;
+    private boolean active;
+    private int assigned;
 
-    public ClassroomRequestDTO(String classroomName, int capacity, String classroomType, int floor, boolean active) {
-        this(null, classroomName, capacity, classroomType, floor, active);
-    }
-
-    public ClassroomRequestDTO(Integer id, String classroomName, int capacity, String classroomType, int floor, boolean active) {
+    public ClassroomRequestDTO(
+            Integer id,
+            String classroomName,
+            int capacity,
+            String classroomType,
+            int floor,
+            boolean active,
+            int assigned
+    ) {
         this.id = id;
         this.classroomName = classroomName;
         this.capacity = capacity;
         this.classroomType = classroomType;
         this.floor = floor;
         this.active = active;
+        this.assigned = assigned;
     }
 }
