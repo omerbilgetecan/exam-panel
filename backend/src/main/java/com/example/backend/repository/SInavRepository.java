@@ -144,26 +144,31 @@ public class SInavRepository {
         return selected;
     }
 
-    public Integer createExamWithRooms(LocalDate date, Integer sessionId, Integer courseId, List<RoomInfo> rooms) {
-        Integer firstExamId = null;
-        CourseInfo course = findCourse(courseId);
-        for (RoomInfo room : rooms) {
-            Object result = entityManager.createNativeQuery(
-                            "INSERT INTO dbo.Sinavlar (DersID, Tarih, OturumID, DerslikID, OgrenciSayisi) " +
-                                    "OUTPUT INSERTED.SinavID VALUES (:courseId, :date, :sessionId, :roomId, :studentCount)")
-                    .setParameter("courseId", courseId)
-                    .setParameter("date", date)
-                    .setParameter("sessionId", sessionId)
-                    .setParameter("roomId", room.id())
-                    .setParameter("studentCount", course.studentCount())
-                    .getSingleResult();
-            if (firstExamId == null) {
-                firstExamId = ((Number) result).intValue();
-            }
-        }
+   public Integer createExamWithRooms(LocalDate date, Integer sessionId, Integer courseId, List<RoomInfo> rooms) {
+    Integer firstExamId = null;
+    CourseInfo course = findCourse(courseId);
 
-        return firstExamId;
+    for (RoomInfo room : rooms) {
+        Object result = entityManager.createNativeQuery(
+                "DECLARE @InsertedIds TABLE (SinavID INT); " +
+                "INSERT INTO dbo.Sinavlar (DersID, Tarih, OturumID, DerslikID, OgrenciSayisi) " +
+                "OUTPUT INSERTED.SinavID INTO @InsertedIds " +
+                "VALUES (:courseId, :date, :sessionId, :roomId, :studentCount); " +
+                "SELECT SinavID FROM @InsertedIds;")
+            .setParameter("courseId", courseId)
+            .setParameter("date", date)
+            .setParameter("sessionId", sessionId)
+            .setParameter("roomId", room.id())
+            .setParameter("studentCount", course.studentCount())
+            .getSingleResult();
+
+        if (firstExamId == null) {
+            firstExamId = ((Number) result).intValue();
+        }
     }
+
+    return firstExamId;
+}
 
    @SuppressWarnings("unchecked")
 public List<Object[]> spTumSinavlariGetir() {
