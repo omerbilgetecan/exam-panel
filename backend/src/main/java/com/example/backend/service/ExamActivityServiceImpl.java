@@ -7,7 +7,11 @@ import jakarta.persistence.PersistenceContext;
 import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Map;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -315,13 +319,24 @@ dto.setStatus(isWaiting ? "Atama Bekliyor" : "Planlandı");
     public List<ReportRequestDTO> getExamProgramReport() {
         return reportRepository.examProgram();
     }
+@Transactional
+   public String runBackup() {
+    try {
+        Object result = entityManager
+                .createNativeQuery("EXEC dbo.sp_VeritabaniYedekAl")
+                .getSingleResult();
 
-    @Transactional
-    public String runBackup() {
-        entityManager.createNativeQuery("EXEC dbo.sp_VeritabaniYedekAl").executeUpdate();
-        logRepository.log("Yedekleme tamamlandı", "sp_VeritabaniYedekAl çalıştırıldı", "Başarılı");
-        return "Veritabanı yedeği başarıyla oluşturuldu.";
+        String backupPath = result != null ? result.toString() : "C:\\Yedekler";
+
+        logRepository.log("Yedekleme tamamlandı", backupPath, "Başarılı");
+
+        return "Veritabanı yedeği oluşturuldu: " + backupPath;
+
+    } catch (Exception ex) {
+        logRepository.log("Yedekleme başarısız", ex.getMessage(), "Hata");
+        throw new IllegalArgumentException("Yedekleme başarısız: " + ex.getMessage());
     }
+}
     @Transactional
 public Map<String, Object> dbCheck() {
     Object viewResult = entityManager

@@ -620,8 +620,8 @@ function App() {
       const result = await api.runBackup()
       setToast(result.message ?? 'Yedekleme tamamlandı.')
       await loadData()
-    } catch {
-      setToast('Backup procedure çağrısı başarısız oldu.')
+    } catch (error) {
+      setToast(error.message || 'Yedekleme başarısız oldu.')
     } finally {
       setBusy(false)
     }
@@ -1281,7 +1281,6 @@ function Dashboard({ dashboard = emptyDashboard, exams }) {
     { label: 'Toplam Personel', value: dashboard.personnelCount, note: 'Gözetmen havuzu' },
     { label: 'Toplam Sınav', value: dashboard.examCount, note: 'Bu dönem planlanan' },
     { label: 'Atanan Sınav', value: dashboard.assignedCount, note: 'Gözetmeni belli olanlar' },
-    { label: 'Salon Kullanımı', value: `${clampPercent(dashboard.roomUsage)}%`, note: 'Sınıf doluluk oranı' },
     { label: 'Atama Bekleyen', value: dashboard.pendingCount, note: 'Gözetmen atanacaklar', warning: dashboard.pendingCount > 0 },
   ]
 
