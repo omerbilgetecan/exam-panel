@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -97,7 +98,7 @@ public class ExamActivityServiceImpl {
                 dto.getDate(),
                 dto.getSessionId(),
                 course.studentCount(),
-                dto.getClassroom()
+                Arrays.asList(dto.getClassroom(), dto.getClassroom2(), dto.getClassroom3())
         );
 
         Integer id = sInavRepository.createExamWithRooms(dto.getDate(), dto.getSessionId(), dto.getCourseId(), rooms);

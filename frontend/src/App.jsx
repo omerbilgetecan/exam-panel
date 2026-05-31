@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+﻿import { useCallback, useEffect, useMemo, useState } from 'react'
 import './App.css'
 import { api } from './services/api'
 
@@ -16,14 +16,14 @@ const pages = [
 const initialClassroomForm = { classroomName: '', capacity: 60, classroomType: 'Sınıf', floor: 0 };
 pages.push({ id: 'requirements', label: 'Proje Kontrol', icon: 'OK' })
 
-const initialExamForm = { departmentId: '', semester: '', courseId: '', date: '', sessionId: '', classroom: '', classroom2: '', studentCount: 30 }
+const initialExamForm = { departmentId: '', semester: '', courseId: '', date: '', sessionId: '', classroom: '', classroom2: '', classroom3: '', studentCount: 30 }
 const initialCapacityPlanForm = { courseId: '', date: '', sessionId: '', studentCount: 150 }
 const emptyDashboard = { examCount: 0, assignedCount: 0, roomUsage: 0, pendingCount: 0, courseCount: 0, personnelCount: 0 }
 const initialCourseForm = { code: '', name: '', departmentId: '', semester: 1, studentCount: 30 }
 const initialPersonForm = { name: '', department: '', title: 'Arş. Gör.', availability: 'Uygun' }
 const initialDepartmentForm = { name: '' }
 const initialSessionForm = { name: '', startTime: '', endTime: '' }
-const initialLeaveForm = { supervisorId: '', date: '', sessionId: 'ALL', reason: 'İzinli' }
+const initialLeaveForm = { supervisorId: '', date: '', endDate: '', sessionId: 'ALL', reason: 'İzinli' }
 
 const projectRequirements = [
   { group: 'Yönetici Ayarları', item: 'Oturum, salon, bölüm, ders ve personel tanımları', status: 'Hazır' },
@@ -165,6 +165,18 @@ const wouldBreakSupervisorChain = (sessionIds, newSessionId) => {
   return false
 }
 
+const getDateRange = (startDate, endDate) => {
+  if (!startDate) return []
+  const start = new Date(`${startDate}T00:00:00`)
+  const end = new Date(`${endDate || startDate}T00:00:00`)
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return []
+  const dates = []
+  for (const cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
+    dates.push(cursor.toISOString().slice(0, 10))
+  }
+  return dates
+}
+
 const getAssignmentPreview = ({ supervisors, exams, exam, preferredSupervisorId }) => {
   if (!exam) return { neededCount: 0, candidates: [], departmentCount: 0, usesCommonPool: false }
   const neededCount = Math.max(1, Number(exam.requiredSupervisorCount || getExamRoomNames(exam).length || 1))
@@ -279,9 +291,7 @@ function App() {
       setSessions(nextSessions ?? [])
       setReports(nextReports ?? [])
     } catch {
-      setToast('API bağlantısı kurulamadı. Demo modu ile devam edebilirsin.')
-      api.setDemoMode(true)
-      setDemoMode(true)
+      setToast('API bağlantısı kurulamadı. Backend ve SQL Server bağlantısını kontrol et.')
     } finally {
       setLoading(false)
     }
@@ -330,37 +340,18 @@ function App() {
 
   async function openExamModal() {
     setErrorText('')
-    try {
-      // 🎯 Backend'den gelen veriyi çekiyoruz
-      const filteredCourses = await api.getCoursesWithoutExam();
+    const examCourseIds = new Set(exams.map((exam) => Number(exam.courseId)))
+    const safeCourses = courses.filter((course) => !examCourseIds.has(Number(course.id)))
 
-      // 🔍 Konsola gelen veriyi basıp kontrol ediyoruz (F12'de görünecek)
-      console.log("Backend'den Gelen Filtreli Dersler:", filteredCourses);
-
-      // Eğer veri null veya undefined geldiyse boş diziye eşitle ki patlamasın
-      const safeCourses = filteredCourses || [];
-
-      setExamModalCourses(safeCourses);
-
-      setExamForm({
-        ...initialExamForm,
-        // Güvenli dizi üzerinden ilk elemanı seçiyoruz
-        departmentId: safeCourses[0]?.departmentId ? String(safeCourses[0].departmentId) : '',
-        semester: safeCourses[0]?.semester ? String(safeCourses[0].semester) : '',
-        courseId: safeCourses[0]?.id ? String(safeCourses[0].id) : '',
-        date: '', //
-        classroom: capacities[0]?.classroom ?? '', //
-        classroom2: '', //
-        studentCount: safeCourses[0]?.studentCount ?? 30,
-        sessionId: '', //
-      });
-
-      setModal('exam'); //
-    } catch (error) {
-      // 🔍 Gerçek JavaScript hatasını konsola yazdırıyoruz ki tam olarak neyin patlattığını görelim
-      console.error("openExamModal Fonksiyon İçi Hatası:", error);
-      setToast("Ders listesi işlenirken bir hata oluştu.");
-    }
+    setExamModalCourses(safeCourses)
+    setExamForm({
+      ...initialExamForm,
+      departmentId: safeCourses[0]?.departmentId ? String(safeCourses[0].departmentId) : '',
+      semester: safeCourses[0]?.semester ? String(safeCourses[0].semester) : '',
+      courseId: safeCourses[0]?.id ? String(safeCourses[0].id) : '',
+      studentCount: safeCourses[0]?.studentCount ?? 30,
+    })
+    setModal('exam')
   }
 
 
@@ -402,12 +393,19 @@ function App() {
 
   async function submitLeave(event) {
     event.preventDefault()
+    const leaveDates = getDateRange(leaveForm.date, leaveForm.endDate)
+    if (!leaveDates.length) {
+      setToast('Geçerli bir izin tarih aralığı seçmelisin.')
+      return
+    }
     setBusy(true)
     try {
-      await api.createSupervisorLeave(leaveForm)
+      for (const date of leaveDates) {
+        await api.createSupervisorLeave({ ...leaveForm, date })
+      }
       setModal(null)
       setLeaveForm(initialLeaveForm)
-      setToast('Personel izin/mazeret bilgisi kaydedildi.')
+      setToast(leaveDates.length > 1 ? 'Personel izin/mazeret tarih aralığı kaydedildi.' : 'Personel izin/mazeret bilgisi kaydedildi.')
       await loadData()
       setPage('personnel')
     } catch (error) {
@@ -464,6 +462,16 @@ function App() {
 
     if (!examForm.sessionId) {
       setErrorText('Lütfen uygun oturumlardan birini seçiniz.')
+      return
+    }
+    if (!examForm.classroom) {
+      setErrorText('Lütfen en az bir salon seçiniz.')
+      return
+    }
+    const selectedRooms = [examForm.classroom, examForm.classroom2, examForm.classroom3].filter(Boolean)
+    const busyRoom = selectedRooms.find((roomName) => isRoomBusyForExamSlot(roomName))
+    if (busyRoom) {
+      setErrorText(`${busyRoom} seçilen tarih ve oturumda dolu. Lütfen farklı salon seçiniz.`)
       return
     }
 
@@ -564,8 +572,31 @@ const showCapacityWarning = useMemo(() => {
     totalCapacity += room2 ? room2.capacity : 0;
   }
 
+  if (examForm.classroom3) {
+    const room3 = capacities.find(r => r.classroom === examForm.classroom3);
+    totalCapacity += room3 ? room3.capacity : 0;
+  }
+
   return totalCapacity < Number(examForm.studentCount);
-}, [capacities, examForm.classroom, examForm.classroom2, examForm.studentCount]);
+}, [capacities, examForm.classroom, examForm.classroom2, examForm.classroom3, examForm.studentCount]);
+
+const selectedExamRoomCapacity = useMemo(() => {
+  return [examForm.classroom, examForm.classroom2, examForm.classroom3]
+    .filter(Boolean)
+    .reduce((sum, classroom) => {
+      const room = capacities.find(r => r.classroom === classroom);
+      return sum + Number(room?.capacity || 0);
+    }, 0)
+}, [capacities, examForm.classroom, examForm.classroom2, examForm.classroom3])
+
+const isRoomBusyForExamSlot = useCallback((roomName) => {
+  if (!roomName || !examForm.date || !examForm.sessionId) return false
+  return exams.some((exam) =>
+    exam.date === examForm.date &&
+    String(exam.sessionId) === String(examForm.sessionId) &&
+    getExamRoomNames(exam).includes(roomName)
+  )
+}, [examForm.date, examForm.sessionId, exams])
 
   const title = pages.find((entry) => entry.id === page)?.label
 
@@ -603,31 +634,23 @@ const showCapacityWarning = useMemo(() => {
             <h1>{title}</h1>
           </div>
           <div className="toolbar">
-            <span className="mode-pill">Demo veri modu</span>
-            <button type="button" className="secondary-button" disabled={busy} onClick={runBackup}>
-              Yedek Al
-            </button>
-            <button type="button" className="secondary-button" onClick={() => setModal('department')}>
-              + Bölüm
-            </button>
-            <button type="button" className="secondary-button" onClick={() => { setErrorText(''); setModal('session'); }}>
-              + Oturum
-            </button>
-            <button type="button" className="secondary-button" onClick={() => setModal('classroom')}>
-              + Salon
-            </button>
-            <button type="button" className="secondary-button" onClick={() => setModal('course')}>
-              + Ders
-            </button>
-            <button type="button" className="secondary-button" onClick={() => setModal('person')}>
-              + Personel
-            </button>
-            <button type="button" className="secondary-button" disabled={!supervisors.length || !sessions.length} onClick={() => setModal('leave')}>
-              + İzin/Mazeret
-            </button>
-            <button type="button" className="primary-button" disabled={!courses.length} onClick={openExamModal}>
-              + Sınav
-            </button>
+            <div className="toolbar-group">
+              <span className="mode-pill">{demoMode ? 'Demo veri modu' : 'Veritabanı modu'}</span>
+              <button type="button" className="secondary-button" disabled={busy} onClick={runBackup}>Yedek Al</button>
+            </div>
+            <div className="toolbar-group" aria-label="Tanımlar">
+              <button type="button" className="secondary-button" onClick={() => setModal('department')}>+ Bölüm</button>
+              <button type="button" className="secondary-button" onClick={() => { setErrorText(''); setModal('session'); }}>+ Oturum</button>
+              <button type="button" className="secondary-button" onClick={() => setModal('classroom')}>+ Salon</button>
+              <button type="button" className="secondary-button" onClick={() => setModal('course')}>+ Ders</button>
+            </div>
+            <div className="toolbar-group" aria-label="Personel">
+              <button type="button" className="secondary-button" onClick={() => setModal('person')}>+ Personel</button>
+              <button type="button" className="secondary-button" disabled={!supervisors.length || !sessions.length} onClick={() => setModal('leave')}>+ İzin/Mazeret</button>
+            </div>
+            <div className="toolbar-group" aria-label="Sınav">
+              <button type="button" className="primary-button" disabled={!courses.length} onClick={openExamModal}>+ Sınav</button>
+            </div>
           </div>
         </header>
 
@@ -693,7 +716,7 @@ const showCapacityWarning = useMemo(() => {
                 required
                 value={classroomForm.classroomName}
                 onChange={(event) => setClassroomForm({ ...classroomForm, classroomName: event.target.value.toUpperCase() })}
-                placeholder="Örn: A-101, Z-04, 102"
+                placeholder="Örn: 205, 309, 410"
               />
             </label>
             <label>
@@ -790,7 +813,8 @@ const showCapacityWarning = useMemo(() => {
         <Modal title="Personel İzin / Mazeret Ekle" onClose={() => setModal(null)}>
           <form className="form-grid" onSubmit={submitLeave}>
             <label>Personel<select required value={leaveForm.supervisorId} onChange={(event) => setLeaveForm({ ...leaveForm, supervisorId: event.target.value })}><option value="">Personel seçin</option>{supervisors.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>
-            <label>Tarih<input type="date" required value={leaveForm.date} onChange={(event) => setLeaveForm({ ...leaveForm, date: event.target.value })} /></label>
+            <label>Başlangıç Tarihi<input type="date" required value={leaveForm.date} onChange={(event) => setLeaveForm({ ...leaveForm, date: event.target.value, endDate: leaveForm.endDate || event.target.value })} /></label>
+            <label>Bitiş Tarihi<input type="date" required min={leaveForm.date || undefined} value={leaveForm.endDate || leaveForm.date} onChange={(event) => setLeaveForm({ ...leaveForm, endDate: event.target.value })} /></label>
             <label>İzin Kapsamı<select required value={leaveForm.sessionId} onChange={(event) => setLeaveForm({ ...leaveForm, sessionId: event.target.value })}><option value="ALL">Tüm gün</option>{sessions.map((session) => <option key={session.id} value={session.id}>{session.name} ({session.startTime} - {session.endTime})</option>)}</select></label>
             <label>Mazeret<select value={leaveForm.reason} onChange={(event) => setLeaveForm({ ...leaveForm, reason: event.target.value })}><option>İzinli</option><option>Danışmanlık Saati</option><option>Görevli</option></select></label>
             <div className="form-actions"><button type="button" className="secondary-button" onClick={() => setModal(null)}>Vazgeç</button><button type="submit" className="primary-button" disabled={busy}>Kaydet</button></div>
@@ -816,6 +840,7 @@ const showCapacityWarning = useMemo(() => {
                   date: '',
                   classroom: '',
                   classroom2: '',
+                  classroom3: '',
                   sessionId: '',
                 })
               }}>
@@ -840,6 +865,7 @@ const showCapacityWarning = useMemo(() => {
                   date: '',
                   classroom: '',
                   classroom2: '',
+                  classroom3: '',
                   sessionId: '',
                 })
               }}>
@@ -852,13 +878,13 @@ const showCapacityWarning = useMemo(() => {
             <label>
               Ders
               <select required value={examForm.courseId} onChange={(event) => {
-                // 🎯 Taramayı genel listeyle değil modal listesiyle yapıyoruz:
+                // ğŸ¯ Taramayı genel listeyle değil modal listesiyle yapıyoruz:
                 const selected = examModalCourses.find((course) => String(course.id) === event.target.value)
-                setExamForm({ ...examForm, courseId: event.target.value, studentCount: selected?.studentCount ?? examForm.studentCount, date: '', classroom: '', classroom2: '', sessionId: '' })
+                setExamForm({ ...examForm, courseId: event.target.value, studentCount: selected?.studentCount ?? examForm.studentCount, date: '', classroom: '', classroom2: '', classroom3: '', sessionId: '' })
               }}>
                 <option value="">Ders seçin</option>
 
-                {/* 🔥 İŞTE KRİTİK DEĞİŞİKLİK: Artık genel havuz değil, sadece sınavı olmayan dersler listeleniyor */}
+                {/* ğŸ”¥ İŞTE KRİTİK DEĞİŞİKLİK: Artık genel havuz değil, sadece sınavı olmayan dersler listeleniyor */}
                 {selectableExamCourses.map((course) => <option key={course.id} value={course.id}>{course.code} - {course.name}</option>)}
               </select>
             </label>
@@ -871,7 +897,7 @@ const showCapacityWarning = useMemo(() => {
                 required
                 disabled={!examForm.courseId} // Ders seçilmeden tarih seçilemez
                 value={examForm.date}
-                onChange={(event) => setExamForm({ ...examForm, date: event.target.value, classroom: '', classroom2: '', sessionId: '' })}
+                onChange={(event) => setExamForm({ ...examForm, date: event.target.value, classroom: '', classroom2: '', classroom3: '', sessionId: '' })}
               />
             </label>
 
@@ -892,13 +918,14 @@ const showCapacityWarning = useMemo(() => {
               <button
                 type="button"
                 className="secondary-button"
-                disabled={!examForm.date || !examSmartPlan.isEnough}
+                disabled={!examForm.date || !examForm.sessionId || !examSmartPlan.isEnough}
                 onClick={() => {
-                  const [firstRoom, secondRoom] = examSmartPlan.selected
+                  const [firstRoom, secondRoom, thirdRoom] = examSmartPlan.selected
                   setExamForm({
                     ...examForm,
                     classroom: firstRoom?.classroom || '',
                     classroom2: secondRoom?.classroom || '',
+                    classroom3: thirdRoom?.classroom || '',
                   })
                 }}
               >
@@ -914,33 +941,58 @@ const showCapacityWarning = useMemo(() => {
             </div>
 
             {/* 3. ADIM: 1. SALON SEÇİMİ */}
-            <label style={{ opacity: !examForm.date ? 0.6 : 1 }}>
+            <label style={{ opacity: !examForm.date || !examForm.sessionId ? 0.6 : 1 }}>
               1. Salon
               <select
                 required
-                disabled={!examForm.date} // Tarih seçilmeden salon seçilemez
+                disabled={!examForm.date || !examForm.sessionId}
                 value={examForm.classroom}
-                onChange={(event) => setExamForm({ ...examForm, classroom: event.target.value, classroom2: '', sessionId: '' })}
+                onChange={(event) => setExamForm({ ...examForm, classroom: event.target.value, classroom2: '', classroom3: '' })}
               >
                 <option value="">Salon Seçin</option>
-                {capacities.map((room) => <option key={room.id} value={room.classroom}>{room.classroom} (Kap: {room.capacity})</option>)}
+                {capacities.map((room) => {
+                  const busy = isRoomBusyForExamSlot(room.classroom)
+                  return <option key={room.id} value={room.classroom} disabled={busy}>{room.classroom} (Kap: {room.capacity}){busy ? ' - Dolu' : ''}</option>
+                })}
               </select>
             </label>
 
 
-            {/* 🔥 YENİ DİNAMİK ALAN: Eğer 1. salonun kapasitesi yetmiyorsa veya zaten 2. salon seçilmişse ekrana gelir */}
+            {/* ğŸ”¥ YENİ DİNAMİK ALAN: Eğer 1. salonun kapasitesi yetmiyorsa veya zaten 2. salon seçilmişse ekrana gelir */}
             {((examForm.classroom && capacities.find(r => r.classroom === examForm.classroom)?.capacity < Number(examForm.studentCount)) || examForm.classroom2) && (
               <label style={{ animation: 'fadeIn 0.2s ease-in-out' }}>
                 <span style={{ color: '#e67e22', fontWeight: '600' }}>2. Salon (Ek Kontenjan Gerekli)</span>
                 <select
                   value={examForm.classroom2 || ''}
-                  onChange={(event) => setExamForm({ ...examForm, classroom2: event.target.value, sessionId: '' })}
+                  onChange={(event) => setExamForm({ ...examForm, classroom2: event.target.value, classroom3: '' })}
                 >
                   <option value="">Ek 2. Salon Seçin (Opsiyonel)</option>
                   {capacities
                     // 1. seçilen salonun listede tekrar çıkmasını engelliyoruz çakışma olmasın diye
                     .filter(room => room.classroom !== examForm.classroom)
-                    .map((room) => <option key={room.id} value={room.classroom}>{room.classroom} (Kap: {room.capacity})</option>)
+                    .map((room) => {
+                      const busy = isRoomBusyForExamSlot(room.classroom)
+                      return <option key={room.id} value={room.classroom} disabled={busy}>{room.classroom} (Kap: {room.capacity}){busy ? ' - Dolu' : ''}</option>
+                    })
+                  }
+                </select>
+              </label>
+            )}
+
+            {(examForm.classroom3 || (examForm.classroom2 && selectedExamRoomCapacity < Number(examForm.studentCount))) && (
+              <label style={{ animation: 'fadeIn 0.2s ease-in-out' }}>
+                <span style={{ color: '#e67e22', fontWeight: '600' }}>3. Salon (Ek Kontenjan Gerekli)</span>
+                <select
+                  value={examForm.classroom3 || ''}
+                  onChange={(event) => setExamForm({ ...examForm, classroom3: event.target.value })}
+                >
+                  <option value="">Ek 3. Salon Seçin (Opsiyonel)</option>
+                  {capacities
+                    .filter(room => room.classroom !== examForm.classroom && room.classroom !== examForm.classroom2)
+                    .map((room) => {
+                      const busy = isRoomBusyForExamSlot(room.classroom)
+                      return <option key={room.id} value={room.classroom} disabled={busy}>{room.classroom} (Kap: {room.capacity}){busy ? ' - Dolu' : ''}</option>
+                    })
                   }
                 </select>
               </label>
@@ -948,46 +1000,53 @@ const showCapacityWarning = useMemo(() => {
 
             {showCapacityWarning && (
               <div style={{color:'#d35400', backgroundColor:'#fff5e6', borderLeft:'3px solid #e67e22', padding:'6px 10px', fontSize:'12px', marginTop:'-6px'}}>
-                ⚠️ Seçilen salonların toplam kapasitesi ders kontenjanını hâlâ karşılamıyor!
+                Uyarı: Seçilen salonların toplam kapasitesi ders kontenjanını hâlâ karşılamıyor!
               </div>
             )}
 
             {/* 4. ADIM: OTURUM SEÇİMİ */}
-            <div className="form-group" style={{display:'flex', flexDirection:'column', gap:'6px', opacity: !examForm.classroom ? 0.6 : 1}}>
+            <div className="form-group" style={{display:'flex', flexDirection:'column', gap:'6px', opacity: !examForm.date ? 0.6 : 1}}>
               <label style={{fontWeight:'600', color:'#34495e', fontSize:'14px'}}>Sınav Oturumu</label>
               <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(130px, 1fr))', gap:'10px'}}>
                 {sessions.length === 0 ? (
                   <p style={{color:'#7f8c8d', fontSize:'13px'}}>Sisteme tanımlı aktif oturum bulunamadı.</p>
                 ) : (
                   sessions.map((session) => {
+                    const selectedRooms = [examForm.classroom, examForm.classroom2, examForm.classroom3].filter(Boolean)
+                    const isSelectedRoomBusy = selectedRooms.length > 0 && exams.some(exam =>
+                      exam.date === examForm.date &&
+                      String(exam.sessionId) === String(session.id) &&
+                      getExamRoomNames(exam).some((roomName) => selectedRooms.includes(roomName))
+                    );
                     const isConflict = exams.some(exam =>
                       exam.date === examForm.date &&
                       String(exam.sessionId) === String(session.id) &&
                       selectedCourseDetails &&
-                      exam.semester === selectedCourseDetails.semester &&
-                      exam.departmentId === selectedCourseDetails.departmentId
+                      String(exam.semester) === String(selectedCourseDetails.semester) &&
+                      String(exam.departmentId) === String(selectedCourseDetails.departmentId)
                     );
 
                     const isSelected = String(examForm.sessionId) === String(session.id);
-                    const isLocked = !examForm.classroom; // Salon seçilmediyse buton kilitli
+                    const isBlocked = isSelectedRoomBusy || isConflict;
+                    const isLocked = !examForm.date;
 
                     return (
                       <div
                         key={session.id}
                         onClick={() => {
-                          if (!isConflict && !isLocked) {
+                          if (!isBlocked && !isLocked) {
                             setExamForm({ ...examForm, sessionId: String(session.id) })
                           }
                         }}
                         style={{
-                          border: isSelected ? '2px solid #3498db' : isConflict ? '2px solid #e74c3c' : '2px solid #bdc3c7',
-                          backgroundColor: isSelected ? '#ebf5fb' : isConflict ? '#fde8e8' : '#f8f9fa',
-                          color: isConflict ? '#c0392b' : '#2c3e50',
+                          border: isSelected ? '2px solid #3498db' : isBlocked ? '2px solid #e74c3c' : '2px solid #bdc3c7',
+                          backgroundColor: isSelected ? '#ebf5fb' : isBlocked ? '#fde8e8' : '#f8f9fa',
+                          color: isBlocked ? '#c0392b' : '#2c3e50',
                           padding: '10px',
                           borderRadius: '6px',
                           textAlign: 'center',
-                          cursor: isLocked ? 'not-allowed' : isConflict ? 'not-allowed' : 'pointer',
-                          opacity: isLocked ? 0.5 : isConflict ? 0.65 : 1,
+                          cursor: isLocked ? 'not-allowed' : isBlocked ? 'not-allowed' : 'pointer',
+                          opacity: isLocked ? 0.5 : isBlocked ? 0.65 : 1,
                           fontWeight: isSelected ? 'bold' : 'normal',
                           transition: 'all 0.15s ease'
                         }}
@@ -998,13 +1057,13 @@ const showCapacityWarning = useMemo(() => {
                           fontSize:'10px',
                           padding:'1px 5px',
                           borderRadius:'10px',
-                          backgroundColor: isConflict ? '#e74c3c' : '#2ecc71',
+                          backgroundColor: isBlocked ? '#e74c3c' : '#2ecc71',
                           color:'white',
                           fontWeight:'600',
                           marginTop:'4px',
                           display:'inline-block'
                         }}>
-                          {isConflict ? 'Çakışma Var' : 'Müsait'}
+                          {isSelectedRoomBusy ? 'Salon Dolu' : isConflict ? 'Çakışma Var' : 'Müsait'}
                         </span>
                       </div>
                     );
@@ -1012,12 +1071,12 @@ const showCapacityWarning = useMemo(() => {
                 )}
               </div>
               <small style={{color:'#7f8c8d', fontSize:'11px', marginTop:'2px'}}>
-                {!examForm.classroom ? "Lütfen önce salon seçiniz." : "Aynı dönem zorunlu ders sınavları aynı saate atanamaz."}
+                {!examForm.date ? "Lütfen önce tarih seçiniz." : "Seçili salon doluysa veya dönem çakışması varsa oturum seçilemez."}
               </small>
             </div>
 
             <label>Öğrenci Sayısı<input type="number" min="1" required value={examForm.studentCount} onChange={(event) => setExamForm({ ...examForm, studentCount: Number(event.target.value) })} /></label>
-            <div className="form-actions"><button type="button" className="secondary-button" onClick={() => setModal(null)}>Vazgeç</button><button type="submit" className="primary-button" disabled={busy || !examForm.sessionId}>Kaydet</button></div>
+            <div className="form-actions"><button type="button" className="secondary-button" onClick={() => setModal(null)}>Vazgeç</button><button type="submit" className="primary-button" disabled={busy || !examForm.sessionId || !examForm.classroom}>Kaydet</button></div>
           </form>
         </Modal>
       )}
@@ -1177,7 +1236,7 @@ function CourseList({ courses, onAdd }) {
                   }}
                 >
                   <span style={{ fontWeight: '600', color: '#1e293b', fontSize: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span>{isOpen ? '📂' : '📁'}</span>
+                    <span>{isOpen ? '▾' : '▸'}</span>
                     {departmentName}
                     <span style={{ fontWeight: 'normal', fontSize: '12px', color: '#64748b', backgroundColor: '#f1f5f9', padding: '2px 8px', borderRadius: '12px' }}>
                       {departmentCourses.length} Ders
@@ -1499,3 +1558,4 @@ function LogList({ logs, onBackup, busy }) {
 }
 
 export default App
+

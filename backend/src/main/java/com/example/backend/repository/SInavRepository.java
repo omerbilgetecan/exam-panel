@@ -106,10 +106,14 @@ public class SInavRepository {
     }
 
     public List<RoomInfo> bestRoomCombination(LocalDate date, Integer sessionId, Integer studentCount, String preferredRoom) {
+        return bestRoomCombination(date, sessionId, studentCount, preferredRoom == null ? List.of() : List.of(preferredRoom));
+    }
+
+    public List<RoomInfo> bestRoomCombination(LocalDate date, Integer sessionId, Integer studentCount, List<String> preferredRooms) {
         List<RoomInfo> available = new ArrayList<>(availableRooms(date, sessionId));
         List<RoomInfo> selected = new ArrayList<>();
 
-        if (preferredRoom != null && !preferredRoom.isBlank()) {
+        for (String preferredRoom : preferredRooms.stream().filter(room -> room != null && !room.isBlank()).distinct().toList()) {
             RoomInfo room = findRoomByName(preferredRoom);
             if (!available.stream().anyMatch(item -> item.id().equals(room.id()))) {
                 throw new IllegalArgumentException("Seçilen salon bu tarih ve oturumda dolu: " + preferredRoom);
