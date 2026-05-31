@@ -2,6 +2,9 @@
 
 Üniversite sınav planlama süreçlerini, gözetmen atamalarını ve derslik kapasitelerini yönetmek amacıyla tasarlanmış kapsamlı bir Full-Stack uygulamasıdır. Sistem modern bir React önyüzü (frontend), güçlü bir Spring Boot arkayüzü (backend) ve sağlam bir SQL Server veritabanı altyapısına sahiptir.
 
+<img width="1895" height="851" alt="Screenshot_6" src="https://github.com/user-attachments/assets/ec27f732-516b-4ae6-b375-11c60dd45cfa" />
+
+
 ## 🚀 Mimari Genel Bakış
 
 Bu proje üç ana katmana ayrılmıştır:
